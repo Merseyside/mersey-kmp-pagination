@@ -1,0 +1,92 @@
+package com.merseyside.pagination
+
+import com.merseyside.merseyLib.kotlin.entity.result.Result
+import com.merseyside.merseyLib.kotlin.logger.ILogger
+import com.merseyside.pagination.contract.BasePaginationContract
+import com.merseyside.pagination.pagesManager.PaginationPagesManager
+import com.merseyside.merseyLib.utils.core.savedState.SavedState
+import com.merseyside.merseyLib.utils.core.savedState.delegate.saveable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlin.coroutines.CoroutineContext
+
+abstract class BasePagination<PD, Data, Page>(
+    parentScope: CoroutineScope,
+    private val initPage: Page,
+    private val savedState: SavedState = SavedState()
+): BasePaginationContract, CoroutineScope, ILogger where PD : PagerData<Data, Page> {
+
+    override val coroutineContext: CoroutineContext = parentScope.coroutineContext
+    private var loadingJob: Job? = null
+
+    protected val pagesManager: PaginationPagesManager<Page> by savedState.saveable { savedState ->
+        PaginationPagesManager(initPage, savedState)
+    }
+
+    private var onPagingResetCallbacks: MutableList<() -> Unit> = mutableListOf()
+
+    /**
+     * Callback for current, initial and next pages.
+     */
+    protected abstract val onPageResultInternal: (Result<Data>) -> Unit
+
+    abstract suspend fun loadPage(page: Page?): PD
+
+    override fun loadInitialPage(onComplete: () -> Unit): Boolean {
+        if (isLoading()) return false
+        pagesManager.reset()
+
+        return loadCurrentPage { pagesManager.isFirstPageLoaded = true }
+    }
+
+    override fun loadCurrentPage(onComplete: () -> Unit): Boolean {
+        if (isLoading()) return false
+        val page = pagesManager.currentPage
+
+        loadPageInternal(page, onPageResultInternal, onComplete, ::loadPage)
+
+        return true
+    }
+
+    override fun resetPaging() {
+        pagesManager.reset()
+        onPagingResetCallbacks.forEach { callback -> callback() }
+    }
+
+    override fun addOnPagingResetCallback(block: () -> Unit) {
+        onPagingResetCallbacks.add(block)
+    }
+
+    fun isLoadedData(): Boolean {
+        return pagesManager.isFirstPageLoaded
+    }
+
+    fun isLoading(): Boolean {
+        return loadingJob?.isActive == true
+    }
+
+    protected fun loadPageInternal(
+        page: Page?,
+        emitResult: (Result<Data>) -> Unit,
+        onComplete: () -> Unit = {},
+        dataProvider: suspend (Page?) -> PD
+    ) {
+        loadingJob = launch {
+            try {
+                emitResult(Result.Loading())
+                val newData = dataProvider(page)
+                onDataLoaded(page, newData)
+                emitResult(Result.Success(newData.data))
+                onComplete()
+            } catch (e: Exception) {
+                emitResult(Result.Error(e))
+            }
+        }
+    }
+
+    protected fun onDataLoaded(loadedPage: Page?, pagerData: PD) {
+        pagesManager.onPageLoaded(loadedPage, pagerData.nextPage, pagerData.prevPage)
+    }
+
+}
