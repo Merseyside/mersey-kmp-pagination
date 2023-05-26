@@ -17,7 +17,7 @@ open class PaginationHandler<Data>(
     }
 
     override val onLoadFirstPage: (onComplete: () -> Unit) -> Unit = {
-        pagination.loadInitialPage(it)
+        pagination.loadCurrentPage(it)
     }
 
     override val onLoadNextPage: () -> Unit = {

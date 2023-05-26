@@ -21,8 +21,8 @@ abstract class TwoWayPagination<PD, Data, Page>(
 
     abstract suspend fun loadPrevPage(page: Page?): PD
 
-    private var onPrevPageResult: (Result<Data>) -> Unit = { result ->
-        mutPrevPageResultFlow.tryEmit(result)
+    private var onPrevPageResult: suspend (Result<Data>) -> Unit = { result ->
+        mutPrevPageResultFlow.emit(result)
     }
 
     override fun loadPrevPage(onComplete: () -> Unit): Boolean {

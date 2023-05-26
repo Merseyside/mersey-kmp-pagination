@@ -16,17 +16,13 @@ abstract class Pagination<PD, Data, Page>(
 ) : BasePagination<PD, Data, Page>(parentScope, initPage, savedState),
     PaginationContract<Data> where PD : PagerData<Data, Page> {
 
-    private val mutPageResultFlow = MutableSharedFlow<Result<Data>>(
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
+    private val mutPageResultFlow = MutableSharedFlow<Result<Data>>()
     override val onPageResultFlow: Flow<Result<Data>> = mutPageResultFlow
 
-    override val onPageResultInternal: (Result<Data>) -> Unit = { result ->
-        mutPageResultFlow.tryEmit(result)
+    override val onPageResultInternal: suspend (Result<Data>) -> Unit = { result ->
+        mutPageResultFlow.emit(result)
     }
 
-    var onPageResult: (Result<Data>) -> Unit = {}
 
     override fun loadNextPage(onComplete: () -> Unit): Boolean {
         if (isLoading()) return false

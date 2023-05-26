@@ -11,8 +11,9 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 
 abstract class TwoWayParametrizedPagination<Paging : TwoWayPaginationData<Data>, Data, Params : Any>(
-    parentScope: CoroutineScope
-) : ParametrizedPagination<Paging, Data, Params>(parentScope), TwoWayPaginationContract<Data> {
+    parentScope: CoroutineScope,
+    keepInstances: Boolean = false
+) : ParametrizedPagination<Paging, Data, Params>(parentScope, keepInstances), TwoWayPaginationContract<Data> {
 
     private var collectPrevJob: Job? = null
 
@@ -23,13 +24,18 @@ abstract class TwoWayParametrizedPagination<Paging : TwoWayPaginationData<Data>,
         return currentPagination.loadPrevPage(onComplete)
     }
 
-    override fun initCreatedPagination(pagination: Paging) {
-        super.initCreatedPagination(pagination)
+    override fun collectPagination(pagination: Paging) {
+        super.collectPagination(pagination)
 
-        collectPrevJob?.cancel()
+        cancelPrevJob()
         collectPrevJob = pagination
             .onPrevPageResultFlow
             .onEach { mutPrevPageResultFlow.emit(it) }
             .launchIn(parentScope)
+    }
+
+    private fun cancelPrevJob() {
+        collectPrevJob?.cancel()
+        collectPrevJob = null
     }
 }

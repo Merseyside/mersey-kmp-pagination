@@ -29,7 +29,10 @@ abstract class BasePagination<PD, Data, Page>(
     /**
      * Callback for current, initial and next pages.
      */
-    protected abstract val onPageResultInternal: (Result<Data>) -> Unit
+    protected abstract val onPageResultInternal: suspend (Result<Data>) -> Unit
+
+    override val isFirstPageLoaded: Boolean
+        get() = pagesManager.isFirstPageLoaded
 
     abstract suspend fun loadPage(page: Page?): PD
 
@@ -37,7 +40,10 @@ abstract class BasePagination<PD, Data, Page>(
         if (isLoading()) return false
         pagesManager.reset()
 
-        return loadCurrentPage { pagesManager.isFirstPageLoaded = true }
+        return loadCurrentPage {
+            pagesManager.isFirstPageLoaded = true
+            onComplete()
+        }
     }
 
     override fun loadCurrentPage(onComplete: () -> Unit): Boolean {
@@ -51,7 +57,7 @@ abstract class BasePagination<PD, Data, Page>(
 
     override fun resetPaging() {
         pagesManager.reset()
-        onPagingResetCallbacks.forEach { callback -> callback() }
+        notifyPagingReset()
     }
 
     override fun addOnPagingResetCallback(block: () -> Unit) {
@@ -68,7 +74,7 @@ abstract class BasePagination<PD, Data, Page>(
 
     protected fun loadPageInternal(
         page: Page?,
-        emitResult: (Result<Data>) -> Unit,
+        emitResult: suspend (Result<Data>) -> Unit,
         onComplete: () -> Unit = {},
         dataProvider: suspend (Page?) -> PD
     ) {
@@ -89,4 +95,7 @@ abstract class BasePagination<PD, Data, Page>(
         pagesManager.onPageLoaded(loadedPage, pagerData.nextPage, pagerData.prevPage)
     }
 
+    override fun notifyPagingReset() {
+        onPagingResetCallbacks.forEach { callback -> callback() }
+    }
 }

@@ -5,7 +5,7 @@ import com.merseyside.adapters.compose.dsl.context.ComposeContext
 import com.merseyside.adapters.compose.view.base.SCV
 import com.merseyside.adapters.compose.view.list.paging.ComposingPagingList
 import com.merseyside.adapters.compose.view.list.simple.ListConfig
-import com.merseyside.adapters.core.base.BaseAdapter
+import com.merseyside.adapters.core.base.IBaseAdapter
 import com.merseyside.adapters.core.base.callback.OnAttachToRecyclerViewListener
 import com.merseyside.merseyLib.kotlin.entity.result.Result
 import com.merseyside.pagination.TwoWayPaginationHandler
@@ -57,10 +57,10 @@ fun <Data> ComposingPagingList(
     val handlerConfig: ListConfig.() -> Unit = {
         pagingConfig()
         val listener = object : OnAttachToRecyclerViewListener {
-            override fun onAttached(recyclerView: RecyclerView, adapter: BaseAdapter<*, *>) {
+            override fun onAttached(recyclerView: RecyclerView, adapter: IBaseAdapter<*, *>) {
                 paginationHandler.setRecyclerView(recyclerView)
             }
-            override fun onDetached(recyclerView: RecyclerView, adapter: BaseAdapter<*, *>) {
+            override fun onDetached(recyclerView: RecyclerView, adapter: IBaseAdapter<*, *>) {
                 paginationHandler.setRecyclerView(null)
             }
         }

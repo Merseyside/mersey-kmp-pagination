@@ -1,6 +1,8 @@
 package com.merseyside.pagination.contract
 
 interface BasePaginationContract {
+    val isFirstPageLoaded: Boolean
+
     fun loadInitialPage(onComplete: () -> Unit = {}): Boolean
 
     fun loadCurrentPage(onComplete: () -> Unit = {}): Boolean
@@ -8,4 +10,6 @@ interface BasePaginationContract {
     fun resetPaging()
 
     fun addOnPagingResetCallback(block: () -> Unit)
+
+    fun notifyPagingReset()
 }
