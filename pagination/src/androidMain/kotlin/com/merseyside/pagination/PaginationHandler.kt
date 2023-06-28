@@ -2,27 +2,30 @@ package com.merseyside.pagination
 
 import com.merseyside.pagination.contract.PaginationContract
 import com.merseyside.utils.pagination.PaginationScrollHandler
-open class PaginationHandler<Data>(
-    p: PaginationContract<Data>,
+
+open class PaginationHandler<Paging : PaginationContract<Data>, Data>(
+    paging: Paging,
     loadItemsCountDownOffset: Int = 5,
     loadItemsCountUpOffset: Int = loadItemsCountDownOffset,
 ) : PaginationScrollHandler(loadItemsCountDownOffset, loadItemsCountUpOffset) {
 
-    open val pagination: PaginationContract<Data> = p
+    open val pagination: Paging = paging
 
     init {
-        p.addOnPagingResetCallback {
-            reset()
-        }
+        paging.onResetEvent.observe { reset() }
     }
 
     override val onLoadFirstPage: (onComplete: () -> Unit) -> Unit = {
-        pagination.loadCurrentPage(it)
+        pagination.loadInitialPage(it)
     }
 
-    override val onLoadNextPage: () -> Unit = {
-        pagination.loadNextPage()
+    override val onLoadNextPage: (onComplete: () -> Unit) -> Unit = {
+        pagination.loadNextPage(it)
     }
 
-    override val onLoadPrevPage: () -> Unit = {}
+    override val onLoadPrevPage: (onComplete: () -> Unit) -> Unit = {}
+
+    fun withPaging(block: Paging.() -> Unit) {
+        block(pagination)
+    }
 }

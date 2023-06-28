@@ -9,12 +9,12 @@ import com.merseyside.pagination.contract.TwoWayPaginationContract
 fun <Data, Parent, Model : VM<Parent>> Config<Parent, Model>.setPagination(
     paginationContract: PaginationContract<List<Data>>
 ) {
-    onNextPage = paginationContract.onPageResultFlow.filterSuccessValues()
+    onNextPageFlow = paginationContract.onPageResultFlow.filterSuccessValues()
 }
 
 fun <Data, Parent, Model : VM<Parent>> Config<Parent, Model>.setPagination(
     paginationContract: TwoWayPaginationContract<List<Data>>
 ) {
-    onNextPage = paginationContract.onPageResultFlow.filterSuccessValues()
-    onPrevPage = paginationContract.onPrevPageResultFlow.filterSuccessValues()
+    onNextPageFlow = paginationContract.onPageResultFlow.filterSuccessValues()
+    onPrevPageFlow = paginationContract.onPrevPageResultFlow.filterSuccessValues()
 }

@@ -12,8 +12,9 @@ import kotlinx.coroutines.flow.onEach
 
 abstract class TwoWayParametrizedPagination<Paging : TwoWayPaginationData<Data>, Data, Params : Any>(
     parentScope: CoroutineScope,
+    defaultParams: Params? = null,
     keepInstances: Boolean = false
-) : ParametrizedPagination<Paging, Data, Params>(parentScope, keepInstances), TwoWayPaginationContract<Data> {
+) : ParametrizedPagination<Paging, Data, Params>(parentScope, defaultParams, keepInstances), TwoWayPaginationContract<Data> {
 
     private var collectPrevJob: Job? = null
 

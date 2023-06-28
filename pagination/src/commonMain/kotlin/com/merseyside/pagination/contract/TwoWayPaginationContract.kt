@@ -2,7 +2,6 @@ package com.merseyside.pagination.contract
 
 import com.merseyside.merseyLib.kotlin.entity.result.Result
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.merge
 
 interface TwoWayPaginationContract<Data> : PaginationContract<Data> {

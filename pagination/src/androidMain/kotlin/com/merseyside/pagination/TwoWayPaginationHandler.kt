@@ -2,11 +2,11 @@ package com.merseyside.pagination
 
 import com.merseyside.pagination.contract.TwoWayPaginationContract
 
-class TwoWayPaginationHandler<Data>(
-    override val pagination: TwoWayPaginationContract<Data>,
+class TwoWayPaginationHandler<Paging : TwoWayPaginationContract<Data>, Data>(
+    override val pagination: Paging,
     loadItemsCountDownOffset: Int = 5,
     loadItemsCountUpOffset: Int = loadItemsCountDownOffset,
-): PaginationHandler<Data>(pagination, loadItemsCountDownOffset, loadItemsCountUpOffset) {
+): PaginationHandler<Paging, Data>(pagination, loadItemsCountDownOffset, loadItemsCountUpOffset) {
 
-    override val onLoadPrevPage: () -> Unit = { pagination.loadPrevPage() }
+    override val onLoadPrevPage: (onComplete: () -> Unit) -> Unit = { pagination.loadPrevPage(it) }
 }

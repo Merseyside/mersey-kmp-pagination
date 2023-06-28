@@ -5,7 +5,6 @@ import com.merseyside.merseyLib.kotlin.logger.Logger
 import com.merseyside.pagination.contract.PaginationContract
 import com.merseyside.merseyLib.utils.core.savedState.SavedState
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 
@@ -23,10 +22,10 @@ abstract class Pagination<PD, Data, Page>(
         mutPageResultFlow.emit(result)
     }
 
-
     override fun loadNextPage(onComplete: () -> Unit): Boolean {
+        isLoading().log("kek is loading")
         if (isLoading()) return false
-        if (!pagesManager.isFirstPageLoaded) return false
+        if (!pagesManager.isFirstPageLoaded) throw IllegalStateException("First page not loaded!")
         if (pagesManager.getNextPage() == null) {
             Logger.logInfo(tag, "No next page!")
             return false

@@ -2,6 +2,11 @@ package com.merseyside.pagination.parametrized
 
 import com.merseyside.merseyLib.kotlin.entity.result.Result
 import com.merseyside.merseyLib.kotlin.logger.Logger
+import com.merseyside.merseyLib.kotlin.observable.EventObservableField
+import com.merseyside.merseyLib.kotlin.observable.ObservableField
+import com.merseyside.merseyLib.kotlin.observable.SingleObservableEvent
+import com.merseyside.merseyLib.kotlin.observable.SingleObservableField
+import com.merseyside.pagination.CompleteAction
 import com.merseyside.pagination.PaginationData
 import com.merseyside.pagination.contract.PaginationContract
 import kotlinx.coroutines.CoroutineScope
@@ -13,81 +18,98 @@ import kotlinx.coroutines.flow.onEach
 
 abstract class ParametrizedPagination<Paging : PaginationData<Data>, Data, Params : Any>(
     protected val parentScope: CoroutineScope,
+    private var defaultParams: Params? = null,
     var keepInstances: Boolean = false
 ) : PaginationContract<Data> {
 
     private var collectJob: Job? = null
     private val paginationMap: MutableMap<Params, Paging> = mutableMapOf()
 
-    private var onPagingResetCallbacks: MutableList<() -> Unit> = mutableListOf()
-    private var onPaginationChangedCallbacks: MutableList<(Paging, Params) -> Unit> = mutableListOf()
+    private val onPagingResetObservableEvent = SingleObservableEvent()
+    override val onResetEvent: EventObservableField = onPagingResetObservableEvent
 
-    var currentParams: Params? = null
+    private val onPagingChangedSingleEvent = SingleObservableField<Params>()
+    val onPagingChangedEvent: ObservableField<Params> = onPagingChangedSingleEvent
+
+    lateinit var currentParams: Params
         private set
 
-    fun requireParams(): Params {
-        return currentParams ?: throw NullPointerException("Params not set!")
-    }
-
-    private var _currentPagination: Paging? = null
-    val currentPagination: Paging
-        get() {
-            if (_currentPagination == null) throw IllegalStateException(
-                "Pagination is not initialized." +
-                        "Probable current params not set."
-            )
-            else return _currentPagination!!
-        }
+    lateinit var currentPagination: Paging
 
     private val mutPageResultFlow = MutableSharedFlow<Result<Data>>()
     override val onPageResultFlow: Flow<Result<Data>> = mutPageResultFlow
 
     override val isFirstPageLoaded: Boolean
-        get() = _currentPagination?.isFirstPageLoaded ?: false
+        get() = currentPagination.isFirstPageLoaded
 
     abstract fun createPagination(params: Params): Paging
 
-    fun getPagination(params: Params): Paging? {
+    fun isInitialized(): Boolean {
+        return this::currentParams.isInitialized
+    }
+
+    fun getPaginationOrNull(params: Params): Paging? {
         return paginationMap[params]
     }
 
     fun setParams(params: Params): Boolean {
-        if (currentParams == params) {
+        if (isInitialized() && currentParams == params) {
             Logger.logInfo(this, "Trying to set the same params.")
             return false
         }
 
-        if (!keepInstances) resetPaging()
-
+        if (isInitialized()) resetPaging()
         currentParams = params
 
-        _currentPagination = getPagination(params) ?: createPagination(params).also { p ->
-            paginationMap[params] = p
+        currentPagination = getPagination(params)
+        collectPagination(currentPagination)
+        onPaginationChanged(params)
+        return true
+    }
+
+    fun setDefaultParams(params: Params) {
+        setParams(params)
+    }
+
+    private fun getPagination(params: Params): Paging {
+        return if (keepInstances) {
+            getPaginationOrNull(params) ?: createPagination(params).also { p ->
+                paginationMap[params] = p
+            }
+        } else {
+            createPagination(params)
+        }
+    }
+
+    /**
+     * @return true if default params not null
+     */
+    private fun setDefaultParamsIfNotNull(): Boolean {
+        defaultParams?.let { params ->
+            setParams(params)
         }
 
-        collectPagination(currentPagination)
-        onPaginationChanged(currentPagination, params)
-        return true
+        return defaultParams != null
     }
 
     /**
      * Return true if new provided params not equals to current params
      */
     fun updateAndSetParams(update: (Params) -> Params): Boolean {
-        val newParams = update(requireParams())
+        val newParams = update(currentParams)
         return setParams(newParams)
     }
 
-    override fun loadNextPage(onComplete: () -> Unit): Boolean {
+    override fun loadInitialPage(onComplete: CompleteAction): Boolean = setPaginationIfNeed {
+        currentPagination.loadInitialPage(onComplete)
+    }
+
+    override fun loadCurrentPage(onComplete: CompleteAction): Boolean = setPaginationIfNeed {
+        currentPagination.loadCurrentPage(onComplete)
+    }
+
+    override fun loadNextPage(onComplete: CompleteAction): Boolean {
         return currentPagination.loadNextPage(onComplete)
-    }
-
-    override fun loadInitialPage(onComplete: () -> Unit): Boolean {
-        return currentPagination.loadInitialPage(onComplete)
-    }
-
-    override fun loadCurrentPage(onComplete: () -> Unit): Boolean {
-        return currentPagination.loadCurrentPage(onComplete)
     }
 
     open fun collectPagination(pagination: Paging) {
@@ -100,10 +122,11 @@ abstract class ParametrizedPagination<Paging : PaginationData<Data>, Data, Param
 
     override fun resetPaging() {
         cancelJob()
-        _currentPagination = null
-        currentParams = null
-        paginationMap.clear()
         notifyPagingReset()
+    }
+
+    fun clear() {
+        paginationMap.clear()
     }
 
     private fun cancelJob() {
@@ -111,20 +134,20 @@ abstract class ParametrizedPagination<Paging : PaginationData<Data>, Data, Param
         collectJob = null
     }
 
-    override fun addOnPagingResetCallback(block: () -> Unit) {
-        onPagingResetCallbacks.add(block)
+    private fun notifyPagingReset() {
+        onPagingResetObservableEvent.call()
     }
 
-    override fun notifyPagingReset() {
-        onPagingResetCallbacks.forEach { callback -> callback() }
+    private fun onPaginationChanged(params: Params) {
+        onPagingChangedSingleEvent.value = params
     }
 
-    fun addOnPaginationChangedCallback(block: (Paging, Params) -> Unit) {
-        onPaginationChangedCallbacks.add(block)
-        if (_currentPagination != null) block(currentPagination, requireParams())
-    }
+    private fun <R> setPaginationIfNeed(pagingJob: () -> R): R {
+        if (!isInitialized()) {
+            if (!setDefaultParamsIfNotNull()) throw NullPointerException("Params not set" +
+                    " and default params is also null!")
+        }
 
-    private fun onPaginationChanged(pagination: Paging, params: Params) {
-        onPaginationChangedCallbacks.forEach { callback -> callback(pagination, params) }
+        return pagingJob()
     }
 }

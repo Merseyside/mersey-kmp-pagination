@@ -23,7 +23,7 @@ fun <Data> ComposingPagingList(
         onNextPage = pagination.onPageResultFlow
         onPrevPage = pagination.onPrevPageResultFlow
         this.viewProvider = viewProvider
-        pagination.addOnPagingResetCallback {
+        pagination.onResetEvent.observe {
             resetPaging()
         }
     }
@@ -39,16 +39,16 @@ fun <Data> ComposingPagingList(
     return ComposingPagingList(id, pagingConfig) {
         onNextPage = pagination.onPageResultFlow
         this.viewProvider = viewProvider
-        pagination.addOnPagingResetCallback {
+        pagination.onResetEvent.observe {
             resetPaging()
         }
     }
 }
 
 context(ComposeContext)
-fun <Data> ComposingPagingList(
+fun <Paging : TwoWayPaginationContract<Data>, Data> ComposingPagingList(
     id: String,
-    paginationHandler: TwoWayPaginationHandler<Data>,
+    paginationHandler: TwoWayPaginationHandler<Paging, Data>,
     pagingConfig: ListConfig.() -> Unit = {},
     viewProvider: (Result<Data>) -> List<SCV>
 ): ComposingPagingList<Result<Data>> {
@@ -72,7 +72,7 @@ fun <Data> ComposingPagingList(
         onNextPage = paginationContract.onPageResultFlow
         onPrevPage = paginationContract.onPrevPageResultFlow
         this.viewProvider = viewProvider
-        paginationContract.addOnPagingResetCallback {
+        paginationContract.onResetEvent.observe {
             resetPaging()
         }
     }
