@@ -7,7 +7,7 @@ import com.merseyside.merseyLib.kotlin.observable.ObservableField
 import com.merseyside.merseyLib.kotlin.observable.SingleObservableEvent
 import com.merseyside.merseyLib.kotlin.observable.SingleObservableField
 import com.merseyside.pagination.CompleteAction
-import com.merseyside.pagination.PaginationData
+import com.merseyside.pagination.P
 import com.merseyside.pagination.contract.PaginationContract
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 
-abstract class ParametrizedPagination<Paging : PaginationData<Data>, Data, Params : Any>(
+abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
     protected val parentScope: CoroutineScope,
     private var defaultParams: Params? = null,
     var keepInstances: Boolean = false
@@ -42,7 +42,7 @@ abstract class ParametrizedPagination<Paging : PaginationData<Data>, Data, Param
     override val isFirstPageLoaded: Boolean
         get() = currentPagination.isFirstPageLoaded
 
-    abstract fun createPagination(params: Params): Paging
+    abstract fun createPagination(parentScope: CoroutineScope, params: Params): Paging
 
     fun isInitialized(): Boolean {
         return this::currentParams.isInitialized
@@ -73,11 +73,11 @@ abstract class ParametrizedPagination<Paging : PaginationData<Data>, Data, Param
 
     private fun getPagination(params: Params): Paging {
         return if (keepInstances) {
-            getPaginationOrNull(params) ?: createPagination(params).also { p ->
+            getPaginationOrNull(params) ?: createPagination(parentScope, params).also { p ->
                 paginationMap[params] = p
             }
         } else {
-            createPagination(params)
+            createPagination(parentScope, params)
         }
     }
 
@@ -144,8 +144,10 @@ abstract class ParametrizedPagination<Paging : PaginationData<Data>, Data, Param
 
     private fun <R> setPaginationIfNeed(pagingJob: () -> R): R {
         if (!isInitialized()) {
-            if (!setDefaultParamsIfNotNull()) throw NullPointerException("Params not set" +
-                    " and default params is also null!")
+            if (!setDefaultParamsIfNotNull()) throw NullPointerException(
+                "Params not set" +
+                        " and default params is also null!"
+            )
         }
 
         return pagingJob()

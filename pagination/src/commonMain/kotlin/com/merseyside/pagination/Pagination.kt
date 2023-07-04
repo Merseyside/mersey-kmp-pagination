@@ -23,7 +23,6 @@ abstract class Pagination<PD, Data, Page>(
     }
 
     override fun loadNextPage(onComplete: () -> Unit): Boolean {
-        isLoading().log("kek is loading")
         if (isLoading()) return false
         if (!pagesManager.isFirstPageLoaded) throw IllegalStateException("First page not loaded!")
         if (pagesManager.getNextPage() == null) {
@@ -45,4 +44,4 @@ abstract class Pagination<PD, Data, Page>(
     override val tag: String = "Pagination"
 }
 
-typealias PaginationData<Data> = Pagination<*, Data, *>
+typealias P<Data> = Pagination<*, Data, *>

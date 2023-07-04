@@ -5,11 +5,11 @@ plugins {
 }
 
 mavenPublishing {
-    val projectGitUrl = "https://github.com/Merseyside/mersey-pagination"
+    val projectGitUrl = "https://github.com/Merseyside/mersey-kmp-pagination"
 
     pom {
         name.set("Mersey pagination library")
-        description.set("Multiplatform pagination library")
+        description.set("Pagination KMP library")
         url.set(projectGitUrl)
 
         licenses {
@@ -23,11 +23,6 @@ mavenPublishing {
                 id.set("Merseyside")
                 name.set("Ivan Sablin")
                 email.set("ivanklessablin@gmail.com")
-            }
-
-            developer {
-                id.set("Izibook")
-                name.set("Izibook")
             }
         }
 
@@ -51,6 +46,5 @@ mavenPublishing {
     }
 
     publishToMavenCentral(SonatypeHost.S01)
-    //signAllPublications()
 }
 
