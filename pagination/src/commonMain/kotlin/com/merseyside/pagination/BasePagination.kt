@@ -16,16 +16,16 @@ import kotlin.coroutines.CoroutineContext
 
 abstract class BasePagination<PD, Data, Page>(
     parentScope: CoroutineScope,
-    private val initPage: Page,
+    initPage: Page,
     private val savedState: SavedState = SavedState()
 ): BasePaginationContract, CoroutineScope, ILogger where PD : PagerData<Data, Page> {
-
-    override val coroutineContext: CoroutineContext = parentScope.coroutineContext
-    private var loadingJob: Job? = null
 
     protected val pagesManager: PaginationPagesManager<Page> by savedState.saveable { savedState ->
         PaginationPagesManager(initPage, savedState)
     }
+
+    override val coroutineContext: CoroutineContext = parentScope.coroutineContext
+    private var loadingJob: Job? = null
 
     private val onPagingResetObservableEvent = SingleObservableEvent()
     override val onResetEvent: EventObservableField = onPagingResetObservableEvent
@@ -33,7 +33,7 @@ abstract class BasePagination<PD, Data, Page>(
     /**
      * Callback for current, initial and next pages.
      */
-    protected abstract val onPageResultInternal: suspend (Result<Data>) -> Unit
+    protected abstract val onPageResult: suspend (Result<Data>) -> Unit
 
     override val isFirstPageLoaded: Boolean
         get() = pagesManager.isFirstPageLoaded
@@ -48,10 +48,7 @@ abstract class BasePagination<PD, Data, Page>(
 
         pagesManager.reset()
 
-        return loadCurrentPage {
-            pagesManager.isFirstPageLoaded = true
-            onComplete()
-        }
+        return loadCurrentPage(onComplete)
     }
 
     override fun loadCurrentPage(onComplete: CompleteAction): Boolean {
@@ -60,9 +57,9 @@ abstract class BasePagination<PD, Data, Page>(
             Logger.logInfo(tag, "Loading. Skipped.")
             return false
         }
-        val page = pagesManager.currentPage
+        val page = pagesManager.initPage
 
-        loadPageInternal(page, onPageResultInternal, onComplete, ::loadPage)
+        loadPageInternal(page, onPageResult, onComplete, ::loadPage)
 
         return true
     }
@@ -97,12 +94,11 @@ abstract class BasePagination<PD, Data, Page>(
                 emitResult(Result.Error(e))
             }
 
-            onComplete()
         }.also { it.invokeOnCompletion { onComplete() } }
     }
 
     protected fun onDataLoaded(loadedPage: Page?, pagerData: PD) {
-        pagesManager.onPageLoaded(loadedPage, pagerData.nextPage, pagerData.prevPage)
+        pagesManager.onPageLoaded(loadedPage, pagerData.nextPage.log("next page"), pagerData.prevPage)
     }
 
     private fun notifyPagingReset() {

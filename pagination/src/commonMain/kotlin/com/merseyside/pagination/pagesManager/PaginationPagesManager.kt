@@ -4,14 +4,11 @@ import com.merseyside.merseyLib.utils.core.savedState.SavedState
 import com.merseyside.merseyLib.utils.core.savedState.delegate.value
 import com.merseyside.merseyLib.utils.core.savedState.delegate.valueOrNull
 
-class PaginationPagesManager<Page>(
-    private val initPage: Page,
-    private val savedState: SavedState
-) {
+class PaginationPagesManager<Page>(initPage: Page, private val savedState: SavedState) {
 
     var isFirstPageLoaded = false
 
-    var currentPage: Page? by savedState.value(initPage)
+    var initPage: Page? by savedState.value(initPage)
 
     private var _prevPage: Page? by savedState.valueOrNull()
     private var _nextPage: Page? by savedState.valueOrNull()
@@ -27,17 +24,22 @@ class PaginationPagesManager<Page>(
     }
 
     fun onPageLoaded(loadedPage: Page?, nextPage: Page?, prevPage: Page? = null) {
-        currentPage = loadedPage
-
-        _prevPage = prevPage
-        _nextPage = nextPage
+        if (!isFirstPageLoaded) {
+            isFirstPageLoaded = true
+            if (initPage != null) _prevPage = prevPage
+            _nextPage = nextPage
+        } else if (loadedPage == _nextPage){
+            _nextPage = nextPage
+        } else {
+            _prevPage = prevPage
+        }
     }
 
     fun reset() {
         savedState.clear()
 
         isFirstPageLoaded = false
-        currentPage = initPage
+        initPage = null
         _prevPage = null
         _nextPage = null
     }

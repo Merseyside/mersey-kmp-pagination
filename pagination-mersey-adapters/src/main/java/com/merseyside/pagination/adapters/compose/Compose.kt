@@ -8,9 +8,11 @@ import com.merseyside.adapters.compose.view.list.simple.ListConfig
 import com.merseyside.adapters.core.base.IBaseAdapter
 import com.merseyside.adapters.core.base.callback.OnAttachToRecyclerViewListener
 import com.merseyside.merseyLib.kotlin.entity.result.Result
+import com.merseyside.pagination.PaginationHandler
 import com.merseyside.pagination.TwoWayPaginationHandler
 import com.merseyside.pagination.contract.PaginationContract
 import com.merseyside.pagination.contract.TwoWayPaginationContract
+import com.merseyside.pagination.parametrized.ParametrizedPagination
 
 context(ComposeContext)
 fun <Data> ComposingPagingList(
@@ -25,6 +27,13 @@ fun <Data> ComposingPagingList(
         this.viewProvider = viewProvider
         pagination.onResetEvent.observe {
             resetPaging()
+        }
+
+        if (pagination is ParametrizedPagination<*, *, *>) {
+            pagination.setKeepInstances(false)
+            pagination.onPagingChangedEvent.observe {
+                resetPaging()
+            }
         }
     }
 }
@@ -42,6 +51,13 @@ fun <Data> ComposingPagingList(
         pagination.onResetEvent.observe {
             resetPaging()
         }
+
+        if (pagination is ParametrizedPagination<*, *, *>) {
+            pagination.setKeepInstances(false)
+            pagination.onPagingChangedEvent.observe {
+                resetPaging()
+            }
+        }
     }
 }
 
@@ -52,28 +68,44 @@ fun <Paging : TwoWayPaginationContract<Data>, Data> ComposingPagingList(
     pagingConfig: ListConfig.() -> Unit = {},
     viewProvider: (Result<Data>) -> List<SCV>
 ): ComposingPagingList<Result<Data>> {
-    val paginationContract = paginationHandler.pagination
+    return ComposingPagingList(
+        id,
+        paginationHandler.pagination,
+        wrapWithHandlerConfig(paginationHandler, pagingConfig),
+        viewProvider
+    )
+}
 
-    val handlerConfig: ListConfig.() -> Unit = {
-        pagingConfig()
-        val listener = object : OnAttachToRecyclerViewListener {
-            override fun onAttached(recyclerView: RecyclerView, adapter: IBaseAdapter<*, *>) {
-                paginationHandler.setRecyclerView(recyclerView)
-            }
-            override fun onDetached(recyclerView: RecyclerView, adapter: IBaseAdapter<*, *>) {
-                paginationHandler.setRecyclerView(null)
-            }
+context(ComposeContext)
+fun <Paging : PaginationContract<Data>, Data> ComposingPagingList(
+    id: String,
+    paginationHandler: PaginationHandler<Paging, Data>,
+    pagingConfig: ListConfig.() -> Unit = {},
+    viewProvider: (Result<Data>) -> List<SCV>
+): ComposingPagingList<Result<Data>> {
+
+    return ComposingPagingList(
+        id,
+        paginationHandler.pagination,
+        wrapWithHandlerConfig(paginationHandler, pagingConfig),
+        viewProvider
+    )
+}
+
+context(ComposeContext)
+private fun wrapWithHandlerConfig(
+    paginationHandler: PaginationHandler<*, *>,
+    pagingConfig: ListConfig.() -> Unit = {}
+): ListConfig.() -> Unit = {
+    pagingConfig()
+    val listener = object : OnAttachToRecyclerViewListener {
+        override fun onAttached(recyclerView: RecyclerView, adapter: IBaseAdapter<*, *>) {
+            paginationHandler.setRecyclerView(recyclerView)
         }
-
-        addOnAttachToRecyclerViewListener(listener)
+        override fun onDetached(recyclerView: RecyclerView, adapter: IBaseAdapter<*, *>) {
+            paginationHandler.setRecyclerView(null)
+        }
     }
 
-    return ComposingPagingList(id, handlerConfig) {
-        onNextPage = paginationContract.onPageResultFlow
-        onPrevPage = paginationContract.onPrevPageResultFlow
-        this.viewProvider = viewProvider
-        paginationContract.onResetEvent.observe {
-            resetPaging()
-        }
-    }
+    addOnAttachToRecyclerViewListener(listener)
 }

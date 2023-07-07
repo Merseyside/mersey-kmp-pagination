@@ -2,6 +2,7 @@ package com.merseyside.pagination
 
 import com.merseyside.merseyLib.kotlin.entity.result.Result
 import com.merseyside.merseyLib.kotlin.logger.Logger
+import com.merseyside.merseyLib.kotlin.utils.safeLet
 import com.merseyside.pagination.contract.PaginationContract
 import com.merseyside.merseyLib.utils.core.savedState.SavedState
 import kotlinx.coroutines.CoroutineScope
@@ -18,30 +19,23 @@ abstract class Pagination<PD, Data, Page>(
     private val mutPageResultFlow = MutableSharedFlow<Result<Data>>()
     override val onPageResultFlow: Flow<Result<Data>> = mutPageResultFlow
 
-    override val onPageResultInternal: suspend (Result<Data>) -> Unit = { result ->
+    override val onPageResult: suspend (Result<Data>) -> Unit = { result ->
         mutPageResultFlow.emit(result)
     }
 
     override fun loadNextPage(onComplete: () -> Unit): Boolean {
         if (isLoading()) return false
-        if (!pagesManager.isFirstPageLoaded) throw IllegalStateException("First page not loaded!")
-        if (pagesManager.getNextPage() == null) {
+        return safeLet(pagesManager.getNextPage()) { page ->
+            loadPageInternal(page, onPageResult, onComplete, ::loadPage)
+            true
+        } ?: run {
             Logger.logInfo(tag, "No next page!")
-            return false
+            false
         }
-
-        loadPageInternal(
-            pagesManager.getNextPage(),
-            onPageResultInternal,
-            onComplete,
-            ::loadPage
-        )
-
-        return true
     }
 
 
     override val tag: String = "Pagination"
 }
 
-typealias P<Data> = Pagination<*, Data, *>
+internal typealias P<Data> = Pagination<*, Data, *>

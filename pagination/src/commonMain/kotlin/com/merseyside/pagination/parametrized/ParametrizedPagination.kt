@@ -15,11 +15,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.contract
 
 abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
     protected val parentScope: CoroutineScope,
     private var defaultParams: Params? = null,
-    var keepInstances: Boolean = false
+    private var keepInstances: Boolean = true
 ) : PaginationContract<Data> {
 
     private var collectJob: Job? = null
@@ -27,6 +29,9 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
 
     private val onPagingResetObservableEvent = SingleObservableEvent()
     override val onResetEvent: EventObservableField = onPagingResetObservableEvent
+
+    private val onClearedObservableEvent = SingleObservableEvent()
+    val onClearedEvent: EventObservableField = onClearedObservableEvent
 
     private val onPagingChangedSingleEvent = SingleObservableField<Params>()
     val onPagingChangedEvent: ObservableField<Params> = onPagingChangedSingleEvent
@@ -56,48 +61,34 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
         if (isInitialized() && currentParams == params) {
             Logger.logInfo(this, "Trying to set the same params.")
             return false
+        } else {
+            cancelJob()
         }
 
-        if (isInitialized()) resetPaging()
         currentParams = params
-
         currentPagination = getPagination(params)
+
         collectPagination(currentPagination)
         onPaginationChanged(params)
         return true
     }
 
     fun setDefaultParams(params: Params) {
-        setParams(params)
-    }
-
-    private fun getPagination(params: Params): Paging {
-        return if (keepInstances) {
-            getPaginationOrNull(params) ?: createPagination(parentScope, params).also { p ->
-                paginationMap[params] = p
-            }
-        } else {
-            createPagination(parentScope, params)
-        }
-    }
-
-    /**
-     * @return true if default params not null
-     */
-    private fun setDefaultParamsIfNotNull(): Boolean {
-        defaultParams?.let { params ->
-            setParams(params)
-        }
-
-        return defaultParams != null
+        defaultParams = params
     }
 
     /**
      * Return true if new provided params not equals to current params
      */
+    @OptIn(ExperimentalContracts::class)
     fun updateAndSetParams(update: (Params) -> Params): Boolean {
-        val newParams = update(currentParams)
-        return setParams(newParams)
+        val params = if (isInitialized()) currentParams
+        else defaultParams
+
+        return if (requireParamsNotNull(params)) {
+            val newParams = update(params)
+            setParams(newParams)
+        } else false
     }
 
     override fun loadInitialPage(onComplete: CompleteAction): Boolean = setPaginationIfNeed {
@@ -127,6 +118,44 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
 
     fun clear() {
         paginationMap.clear()
+        onClearedObservableEvent.call()
+    }
+
+    /**
+     * Make parametrized pagination store(or not) and reuse pagination instances or
+     * create a new one every time params were changed.
+     *
+     * If @param keepInstances is false, then all previously stored instances will be cleared.
+     */
+    fun setKeepInstances(keepInstances: Boolean) {
+        if (this.keepInstances != keepInstances) {
+            if (!keepInstances) {
+                clear()
+            }
+
+            this.keepInstances = keepInstances
+        }
+    }
+
+    private fun getPagination(params: Params): Paging {
+        return if (keepInstances) {
+            getPaginationOrNull(params) ?: createPagination(parentScope, params).also { p ->
+                paginationMap[params] = p
+            }
+        } else {
+            createPagination(parentScope, params)
+        }
+    }
+
+    /**
+     * @return true if default params not null
+     */
+    private fun setDefaultParamsIfNotNull(): Boolean {
+        defaultParams?.let { params ->
+            setParams(params)
+        }
+
+        return defaultParams != null
     }
 
     private fun cancelJob() {
@@ -145,11 +174,20 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
     private fun <R> setPaginationIfNeed(pagingJob: () -> R): R {
         if (!isInitialized()) {
             if (!setDefaultParamsIfNotNull()) throw NullPointerException(
-                "Params not set" +
-                        " and default params is also null!"
+                "Params not set and default params is also null!"
             )
         }
 
         return pagingJob()
+    }
+
+    @ExperimentalContracts
+    private fun requireParamsNotNull(params: Params?): Boolean {
+        contract {
+            returns(true) implies (params != null)
+        }
+
+        return if (params != null) true
+        else throw NullPointerException("Params not set and default params is also null!")
     }
 }
