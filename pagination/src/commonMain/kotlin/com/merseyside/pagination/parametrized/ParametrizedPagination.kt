@@ -2,10 +2,8 @@ package com.merseyside.pagination.parametrized
 
 import com.merseyside.merseyLib.kotlin.entity.result.Result
 import com.merseyside.merseyLib.kotlin.logger.Logger
-import com.merseyside.merseyLib.kotlin.observable.EventObservableField
-import com.merseyside.merseyLib.kotlin.observable.ObservableField
-import com.merseyside.merseyLib.kotlin.observable.SingleObservableEvent
-import com.merseyside.merseyLib.kotlin.observable.SingleObservableField
+import com.merseyside.merseyLib.kotlin.logger.logSimpleTag
+import com.merseyside.merseyLib.kotlin.observable.*
 import com.merseyside.pagination.CompleteAction
 import com.merseyside.pagination.P
 import com.merseyside.pagination.contract.PaginationContract
@@ -33,11 +31,12 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
     private val onClearedObservableEvent = SingleObservableEvent()
     val onClearedEvent: EventObservableField = onClearedObservableEvent
 
-    private val onPagingChangedSingleEvent = SingleObservableField<Params>()
-    val onPagingChangedEvent: ObservableField<Params> = onPagingChangedSingleEvent
+    private val onPagingChangedMutableEvent = MutableObservableField<Params>()
+    val onPagingChangedEvent: ObservableField<Params> = onPagingChangedMutableEvent
 
-    lateinit var currentParams: Params
-        private set
+    private var _currentParams: Params? = null
+    val currentParams: Params
+        get() = _currentParams ?: throw NullPointerException("Params not set!")
 
     lateinit var currentPagination: Paging
 
@@ -50,7 +49,7 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
     abstract fun createPagination(parentScope: CoroutineScope, params: Params): Paging
 
     fun isInitialized(): Boolean {
-        return this::currentParams.isInitialized
+        return _currentParams != null
     }
 
     fun getPaginationOrNull(params: Params): Paging? {
@@ -65,7 +64,7 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
             cancelJob()
         }
 
-        currentParams = params
+        _currentParams = params
         currentPagination = getPagination(params)
 
         collectPagination(currentPagination)
@@ -113,10 +112,15 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
 
     override fun resetPaging() {
         cancelJob()
+        currentPagination.resetPaging()
         notifyPagingReset()
     }
 
     fun clear() {
+        _currentParams = null
+        onPagingChangedMutableEvent.value = null
+        resetPaging()
+
         paginationMap.clear()
         onClearedObservableEvent.call()
     }
@@ -158,7 +162,7 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
         return defaultParams != null
     }
 
-    private fun cancelJob() {
+    protected open fun cancelJob() {
         collectJob?.cancel()
         collectJob = null
     }
@@ -168,7 +172,7 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
     }
 
     private fun onPaginationChanged(params: Params) {
-        onPagingChangedSingleEvent.value = params
+        onPagingChangedMutableEvent.value = params
     }
 
     private fun <R> setPaginationIfNeed(pagingJob: () -> R): R {

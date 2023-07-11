@@ -28,14 +28,14 @@ abstract class TwoWayParametrizedPagination<Paging : TwoWayPaginationData<Data>,
     override fun collectPagination(pagination: Paging) {
         super.collectPagination(pagination)
 
-        cancelPrevJob()
         collectPrevJob = pagination
             .onPrevPageResultFlow
             .onEach { mutPrevPageResultFlow.emit(it) }
             .launchIn(parentScope)
     }
 
-    private fun cancelPrevJob() {
+    override fun cancelJob() {
+        super.cancelJob()
         collectPrevJob?.cancel()
         collectPrevJob = null
     }
