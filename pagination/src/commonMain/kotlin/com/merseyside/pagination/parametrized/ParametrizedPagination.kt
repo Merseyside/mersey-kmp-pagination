@@ -2,7 +2,6 @@ package com.merseyside.pagination.parametrized
 
 import com.merseyside.merseyLib.kotlin.entity.result.Result
 import com.merseyside.merseyLib.kotlin.logger.Logger
-import com.merseyside.merseyLib.kotlin.logger.logSimpleTag
 import com.merseyside.merseyLib.kotlin.observable.*
 import com.merseyside.pagination.CompleteAction
 import com.merseyside.pagination.P
@@ -31,7 +30,7 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
     private val onClearedObservableEvent = SingleObservableEvent()
     val onClearedEvent: EventObservableField = onClearedObservableEvent
 
-    private val onPagingChangedMutableEvent = MutableObservableField<Params>()
+    private val onPagingChangedMutableEvent = SingleObservableField<Params>()
     val onPagingChangedEvent: ObservableField<Params> = onPagingChangedMutableEvent
 
     private var _currentParams: Params? = null
