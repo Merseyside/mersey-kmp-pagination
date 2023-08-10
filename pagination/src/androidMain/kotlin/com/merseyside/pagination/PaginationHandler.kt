@@ -23,7 +23,9 @@ open class PaginationHandler<Paging : PaginationContract<Data>, Data>(
         pagination.loadNextPage(it)
     }
 
-    override val onLoadPrevPage: (onComplete: () -> Unit) -> Unit = {}
+    override val onLoadPrevPage: (onComplete: () -> Unit) -> Unit = { onComplete ->
+        onComplete()
+    }
 
     fun withPaging(block: Paging.() -> Unit) {
         block(pagination)
