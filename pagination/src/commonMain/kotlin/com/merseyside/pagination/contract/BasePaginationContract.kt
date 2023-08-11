@@ -1,8 +1,9 @@
 package com.merseyside.pagination.contract
 
 import com.merseyside.merseyLib.kotlin.observable.ObservableField
+import com.merseyside.pagination.formatter.DataFormatter
 
-interface BasePaginationContract {
+interface BasePaginationContract<Data> {
     val isFirstPageLoaded: Boolean
 
     /**

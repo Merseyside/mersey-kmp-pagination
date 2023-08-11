@@ -8,6 +8,7 @@ import com.merseyside.merseyLib.kotlin.observable.SingleObservableEvent
 import com.merseyside.merseyLib.utils.core.savedState.SavedState
 import com.merseyside.merseyLib.utils.core.savedState.delegate.saveable
 import com.merseyside.pagination.contract.BasePaginationContract
+import com.merseyside.pagination.formatter.DataFormatter
 import com.merseyside.pagination.pagesManager.PaginationPagesManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -18,7 +19,7 @@ abstract class BasePagination<PD, Data, Page>(
     parentScope: CoroutineScope,
     initPage: Page,
     private val savedState: SavedState = SavedState()
-): BasePaginationContract, CoroutineScope, ILogger where PD : PagerData<Data, Page> {
+): BasePaginationContract<Data>, CoroutineScope, ILogger where PD : PagerData<Data, Page> {
 
     protected val pagesManager: PaginationPagesManager<Page> by savedState.saveable { savedState ->
         PaginationPagesManager(initPage, savedState)
@@ -29,6 +30,8 @@ abstract class BasePagination<PD, Data, Page>(
 
     private val onPagingResetObservableEvent = SingleObservableEvent()
     override val onResetEvent: EventObservableField = onPagingResetObservableEvent
+
+    val dataFormatters: MutableList<DataFormatter<Data>> = mutableListOf()
 
     /**
      * Callback for current, initial and next pages.
@@ -88,7 +91,7 @@ abstract class BasePagination<PD, Data, Page>(
                 emitResult(Result.Loading())
                 val newData = dataProvider(page)
                 onDataLoaded(page, newData)
-                emitResult(Result.Success(newData.data))
+                emitResult(Result.Success(formatData(newData.data)))
             } catch (e: Exception) {
                 e.printStackTrace()
                 emitResult(Result.Error(e))
@@ -98,11 +101,26 @@ abstract class BasePagination<PD, Data, Page>(
     }
 
     protected fun onDataLoaded(loadedPage: Page?, pagerData: PD) {
-        pagesManager.onPageLoaded(loadedPage, pagerData.nextPage.log("next page"), pagerData.prevPage)
+        pagesManager.onPageLoaded(loadedPage, pagerData.nextPage, pagerData.prevPage)
     }
 
     private fun notifyPagingReset() {
         onPagingResetObservableEvent.call()
+    }
+
+    fun addDataFormatter(dataFormatter: DataFormatter<Data>): DataFormatter<Data> {
+        dataFormatters.add(dataFormatter)
+        return dataFormatter
+    }
+
+    fun removeFormatter(dataFormatter: DataFormatter<Data>) {
+        dataFormatters.remove(dataFormatter)
+    }
+
+    private fun formatData(data: Data): Data {
+        var formattedData = data
+        dataFormatters.forEach { formatter -> formattedData = formatter.format(formattedData) }
+        return formattedData
     }
 }
 
