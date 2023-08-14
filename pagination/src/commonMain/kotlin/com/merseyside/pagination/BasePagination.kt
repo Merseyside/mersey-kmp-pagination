@@ -10,6 +10,7 @@ import com.merseyside.merseyLib.kotlin.observable.SingleObservableEvent
 import com.merseyside.merseyLib.utils.core.savedState.SavedState
 import com.merseyside.merseyLib.utils.core.savedState.delegate.saveable
 import com.merseyside.pagination.contract.BasePaginationContract
+import com.merseyside.pagination.data.PagerData
 import com.merseyside.pagination.formatter.DataFormatter
 import com.merseyside.pagination.pagesManager.PaginationPagesManager
 import kotlinx.coroutines.CoroutineScope

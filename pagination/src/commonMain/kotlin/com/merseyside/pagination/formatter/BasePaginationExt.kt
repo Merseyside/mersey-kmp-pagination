@@ -1,7 +1,7 @@
 package com.merseyside.pagination.formatter
 
 import com.merseyside.pagination.BasePagination
-import com.merseyside.pagination.PagerData
+import com.merseyside.pagination.data.PagerData
 
 fun <Data : List<Item>, Item> BasePagination<out PagerData<Data, *>, Data, *>.setFilter(
     predicate: (Item) -> Boolean

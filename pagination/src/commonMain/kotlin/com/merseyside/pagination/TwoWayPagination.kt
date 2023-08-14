@@ -5,6 +5,7 @@ import com.merseyside.merseyLib.kotlin.logger.Logger
 import com.merseyside.merseyLib.kotlin.utils.safeLet
 import com.merseyside.pagination.contract.TwoWayPaginationContract
 import com.merseyside.merseyLib.utils.core.savedState.SavedState
+import com.merseyside.pagination.data.PagerData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow

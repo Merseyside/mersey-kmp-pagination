@@ -1,5 +1,7 @@
 package com.merseyside.pagination
 
+import com.merseyside.pagination.data.PagerData
+
 class PositionPagerData<Data>(
     data: Data,
     currentPage: Int
