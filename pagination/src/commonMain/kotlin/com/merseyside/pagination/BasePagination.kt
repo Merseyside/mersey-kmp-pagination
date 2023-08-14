@@ -4,6 +4,8 @@ import com.merseyside.merseyLib.kotlin.entity.result.Result
 import com.merseyside.merseyLib.kotlin.logger.ILogger
 import com.merseyside.merseyLib.kotlin.logger.Logger
 import com.merseyside.merseyLib.kotlin.observable.EventObservableField
+import com.merseyside.merseyLib.kotlin.observable.MutableObservableField
+import com.merseyside.merseyLib.kotlin.observable.ObservableField
 import com.merseyside.merseyLib.kotlin.observable.SingleObservableEvent
 import com.merseyside.merseyLib.utils.core.savedState.SavedState
 import com.merseyside.merseyLib.utils.core.savedState.delegate.saveable
@@ -18,11 +20,12 @@ import kotlin.coroutines.CoroutineContext
 abstract class BasePagination<PD, Data, Page>(
     parentScope: CoroutineScope,
     initPage: Page,
+    override val pageSize: Int,
     private val savedState: SavedState = SavedState()
-): BasePaginationContract<Data>, CoroutineScope, ILogger where PD : PagerData<Data, Page> {
+) : BasePaginationContract<Data>, CoroutineScope, ILogger where PD : PagerData<Data, Page> {
 
     protected val pagesManager: PaginationPagesManager<Page> by savedState.saveable { savedState ->
-        PaginationPagesManager(initPage, savedState)
+        PaginationPagesManager(initPage, pageSize, savedState)
     }
 
     override val coroutineContext: CoroutineContext = parentScope.coroutineContext
@@ -31,28 +34,20 @@ abstract class BasePagination<PD, Data, Page>(
     private val onPagingResetObservableEvent = SingleObservableEvent()
     override val onResetEvent: EventObservableField = onPagingResetObservableEvent
 
-    val dataFormatters: MutableList<DataFormatter<Data>> = mutableListOf()
+    private val mutOnStateChangedEvent = MutableObservableField(false)
+    override val onMutableStateChangedEvent: ObservableField<Boolean> = mutOnStateChangedEvent
+
+    internal val dataFormatters: MutableList<DataFormatter<Data>> = mutableListOf()
 
     /**
-     * Callback for current, initial and next pages.
+     * Callback for current and next pages.
      */
     protected abstract val onPageResult: suspend (Result<Data>) -> Unit
 
     override val isFirstPageLoaded: Boolean
         get() = pagesManager.isFirstPageLoaded
 
-    abstract suspend fun loadPage(page: Page?): PD
-
-    override fun loadInitialPage(onComplete: CompleteAction): Boolean {
-        if (isLoading()) {
-            onComplete()
-            return false
-        }
-
-        pagesManager.reset()
-
-        return loadCurrentPage(onComplete)
-    }
+    abstract suspend fun loadPage(page: Page?, pageSize: Int): PD
 
     override fun loadCurrentPage(onComplete: CompleteAction): Boolean {
         if (isLoading()) {
@@ -60,7 +55,7 @@ abstract class BasePagination<PD, Data, Page>(
             Logger.logInfo(tag, "Loading. Skipped.")
             return false
         }
-        val page = pagesManager.initPage
+        val page = pagesManager.currentPage
 
         loadPageInternal(page, onPageResult, onComplete, ::loadPage)
 
@@ -70,6 +65,10 @@ abstract class BasePagination<PD, Data, Page>(
     override fun resetPaging() {
         pagesManager.reset()
         notifyPagingReset()
+    }
+
+    override fun setCurrentPosition(position: Int) {
+        pagesManager.setCurrentPosition(position)
     }
 
     fun isLoadedData(): Boolean {
@@ -84,16 +83,20 @@ abstract class BasePagination<PD, Data, Page>(
         page: Page?,
         emitResult: suspend (Result<Data>) -> Unit,
         onComplete: CompleteAction = {},
-        dataProvider: suspend (Page?) -> PD
+        dataProvider: suspend (page: Page?, pageSize: Int) -> PD
     ) {
         loadingJob = launch {
             try {
-                emitResult(Result.Loading())
-                val newData = dataProvider(page)
-                onDataLoaded(page, newData)
+                val newData = mutableState {
+                    emitResult(Result.Loading())
+                    val newData = dataProvider(page, pageSize)
+                    onDataLoaded(page, newData)
+                    newData
+                }
                 emitResult(Result.Success(formatData(newData.data)))
             } catch (e: Exception) {
                 e.printStackTrace()
+                mutOnStateChangedEvent.value = false
                 emitResult(Result.Error(e))
             }
 
@@ -121,6 +124,13 @@ abstract class BasePagination<PD, Data, Page>(
         var formattedData = data
         dataFormatters.forEach { formatter -> formattedData = formatter.format(formattedData) }
         return formattedData
+    }
+
+    private suspend fun mutableState(mutate: suspend () -> PD): PD {
+        mutOnStateChangedEvent.value = true
+        val data = mutate()
+        mutOnStateChangedEvent.value = false
+        return data
     }
 }
 

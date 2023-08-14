@@ -3,6 +3,7 @@ package com.merseyside.pagination.parametrized
 import com.merseyside.merseyLib.kotlin.entity.result.Result
 import com.merseyside.merseyLib.kotlin.logger.Logger
 import com.merseyside.merseyLib.kotlin.observable.*
+import com.merseyside.merseyLib.utils.core.savedState.SavedState
 import com.merseyside.pagination.CompleteAction
 import com.merseyside.pagination.P
 import com.merseyside.pagination.contract.PaginationContract
@@ -18,8 +19,12 @@ import kotlin.contracts.contract
 abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
     protected val parentScope: CoroutineScope,
     private var defaultParams: Params? = null,
+    private val savedState: SavedState = SavedState(),
     private var keepInstances: Boolean = true
 ) : PaginationContract<Data> {
+
+    override val pageSize: Int
+        get() = currentPagination.pageSize
 
     private var collectJob: Job? = null
     private val paginationMap: MutableMap<Params, Paging> = mutableMapOf()
@@ -42,10 +47,17 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
     private val mutPageResultFlow = MutableSharedFlow<Result<Data>>()
     override val onPageResultFlow: Flow<Result<Data>> = mutPageResultFlow
 
+    private val mutOnStateChangedEvent = MutableObservableField(false)
+    override val onMutableStateChangedEvent: ObservableField<Boolean> = mutOnStateChangedEvent
+    private var mutableStateDisposable: Disposable<Boolean>? = null
+
     override val isFirstPageLoaded: Boolean
         get() = currentPagination.isFirstPageLoaded
 
-    abstract fun createPagination(parentScope: CoroutineScope, params: Params): Paging
+    abstract fun createPagination(
+        parentScope: CoroutineScope,
+        params: Params
+    ): Paging
 
     fun isInitialized(): Boolean {
         return _currentParams != null
@@ -66,6 +78,7 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
         _currentParams = params
         currentPagination = getPagination(params)
 
+        observeMutableState(currentPagination)
         collectPagination(currentPagination)
         onPaginationChanged(params)
         return true
@@ -89,10 +102,6 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
         } else false
     }
 
-    override fun loadInitialPage(onComplete: CompleteAction): Boolean = setPaginationIfNeed {
-        currentPagination.loadInitialPage(onComplete)
-    }
-
     override fun loadCurrentPage(onComplete: CompleteAction): Boolean = setPaginationIfNeed {
         currentPagination.loadCurrentPage(onComplete)
     }
@@ -109,10 +118,22 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
             .launchIn(parentScope)
     }
 
+    open fun observeMutableState(pagination: Paging) {
+        mutableStateDisposable?.dispose()
+        mutableStateDisposable =
+            pagination.onMutableStateChangedEvent.observe(ignoreCurrent = true) { state ->
+                mutOnStateChangedEvent.value = state
+            }
+    }
+
     override fun resetPaging() {
         cancelJob()
         currentPagination.resetPaging()
         notifyPagingReset()
+    }
+
+    override fun setCurrentPosition(position: Int) {
+        currentPagination.setCurrentPosition(position)
     }
 
     fun clear() {

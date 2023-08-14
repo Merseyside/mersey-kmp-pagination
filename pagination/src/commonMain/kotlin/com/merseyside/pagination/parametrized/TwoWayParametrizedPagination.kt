@@ -1,6 +1,7 @@
 package com.merseyside.pagination.parametrized
 
 import com.merseyside.merseyLib.kotlin.entity.result.Result
+import com.merseyside.merseyLib.utils.core.savedState.SavedState
 import com.merseyside.pagination.TwoWayPaginationData
 import com.merseyside.pagination.contract.TwoWayPaginationContract
 import kotlinx.coroutines.CoroutineScope
@@ -13,8 +14,14 @@ import kotlinx.coroutines.flow.onEach
 abstract class TwoWayParametrizedPagination<Paging : TwoWayPaginationData<Data>, Data, Params : Any>(
     parentScope: CoroutineScope,
     defaultParams: Params? = null,
+    savedState: SavedState,
     keepInstances: Boolean = false
-) : ParametrizedPagination<Paging, Data, Params>(parentScope, defaultParams, keepInstances), TwoWayPaginationContract<Data> {
+) : ParametrizedPagination<Paging, Data, Params>(
+    parentScope,
+    defaultParams,
+    savedState,
+    keepInstances
+), TwoWayPaginationContract<Data> {
 
     private var collectPrevJob: Job? = null
 

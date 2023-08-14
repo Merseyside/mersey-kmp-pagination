@@ -1,7 +1,6 @@
 package com.merseyside.pagination
 
 import com.merseyside.pagination.contract.PaginationContract
-import com.merseyside.utils.pagination.PaginationScrollHandler
 
 open class PaginationHandler<Paging : PaginationContract<Data>, Data>(
     paging: Paging,
@@ -13,18 +12,27 @@ open class PaginationHandler<Paging : PaginationContract<Data>, Data>(
 
     init {
         paging.onResetEvent.observe { reset() }
+        paging.onMutableStateChangedEvent.observe(ignoreCurrent = true) { state ->
+            setMutableState(state)
+        }
     }
 
-    override val onLoadFirstPage: (onComplete: () -> Unit) -> Unit = {
-        pagination.loadInitialPage(it)
+    override fun onLoadCurrentPage() {
+        pagination.loadCurrentPage()
     }
 
-    override val onLoadNextPage: (onComplete: () -> Unit) -> Unit = {
-        pagination.loadNextPage(it)
+    override fun onLoadNextPage() {
+        pagination.loadNextPage()
     }
 
-    override val onLoadPrevPage: (onComplete: () -> Unit) -> Unit = { onComplete ->
-        onComplete()
+    override fun onLoadPrevPage() {}
+
+    override fun onPositionChanged(position: Int) {
+        pagination.setCurrentPosition(position)
+    }
+
+    fun resetPagination() {
+        pagination.resetPaging()
     }
 
     fun withPaging(block: Paging.() -> Unit) {

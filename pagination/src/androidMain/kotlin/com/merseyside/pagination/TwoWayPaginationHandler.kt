@@ -8,5 +8,5 @@ class TwoWayPaginationHandler<Paging : TwoWayPaginationContract<Data>, Data>(
     loadItemsCountUpOffset: Int = loadItemsCountDownOffset,
 ): PaginationHandler<Paging, Data>(pagination, loadItemsCountDownOffset, loadItemsCountUpOffset) {
 
-    override val onLoadPrevPage: (onComplete: () -> Unit) -> Unit = { pagination.loadPrevPage(it) }
+    override fun onLoadPrevPage() { pagination.loadPrevPage() }
 }

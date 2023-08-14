@@ -1,12 +1,3 @@
-pluginManagement {
-    repositories {
-        mavenCentral()
-        google()
-
-        gradlePluginPortal()
-    }
-}
-
 dependencyResolutionManagement {
     repositories {
         mavenLocal()
@@ -20,6 +11,7 @@ dependencyResolutionManagement {
 
         val catalogGradle by creating {
             from("$group:catalog-version-gradle:$catalogVersions")
+            version("navigation", "2.6.0")
         }
     }
 }

@@ -12,8 +12,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 abstract class Pagination<PD, Data, Page>(
     parentScope: CoroutineScope,
     initPage: Page,
+    override val pageSize: Int,
     savedState: SavedState = SavedState()
-) : BasePagination<PD, Data, Page>(parentScope, initPage, savedState),
+) : BasePagination<PD, Data, Page>(parentScope, initPage, pageSize, savedState),
     PaginationContract<Data> where PD : PagerData<Data, Page> {
 
     private val mutPageResultFlow = MutableSharedFlow<Result<Data>>()

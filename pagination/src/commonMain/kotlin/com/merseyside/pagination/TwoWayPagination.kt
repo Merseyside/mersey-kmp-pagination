@@ -12,14 +12,15 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 abstract class TwoWayPagination<PD, Data, Page>(
     parentScope: CoroutineScope,
     initPage: Page,
+    pageSize: Int,
     savedState: SavedState = SavedState()
-) : Pagination<PD, Data, Page>(parentScope, initPage, savedState),
+) : Pagination<PD, Data, Page>(parentScope, initPage, pageSize, savedState),
     TwoWayPaginationContract<Data> where PD : PagerData<Data, Page> {
 
     private val mutPrevPageResultFlow = MutableSharedFlow<Result<Data>>()
     override val onPrevPageResultFlow: Flow<Result<Data>> = mutPrevPageResultFlow
 
-    abstract suspend fun loadPrevPage(page: Page?): PD
+    abstract suspend fun loadPrevPage(page: Page?, pageSize: Int): PD
 
     private var onPrevPageResult: suspend (Result<Data>) -> Unit = { result ->
         mutPrevPageResultFlow.emit(result)

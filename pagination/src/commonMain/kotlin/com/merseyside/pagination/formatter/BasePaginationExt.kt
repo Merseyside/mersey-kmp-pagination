@@ -7,6 +7,7 @@ fun <Data : List<Item>, Item> BasePagination<out PagerData<Data, *>, Data, *>.se
     predicate: (Item) -> Boolean
 ): DataFormatter<Data> {
     return addDataFormatter { data ->
+        @Suppress("UNCHECKED_CAST")
         data.filter(predicate) as Data
     }
 }

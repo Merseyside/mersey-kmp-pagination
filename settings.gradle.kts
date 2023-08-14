@@ -5,8 +5,8 @@ private val isLocalKotlinExtLibrary = false
 
 dependencyResolutionManagement {
     repositories {
-        mavenCentral()
         mavenLocal()
+        mavenCentral()
         google()
     }
 
@@ -19,6 +19,7 @@ dependencyResolutionManagement {
 
         val androidLibs by creating {
             from("$group:catalog-version-android:$catalogVersions")
+            version("navigation", "2.6.0")
         }
 
         val common by creating {
