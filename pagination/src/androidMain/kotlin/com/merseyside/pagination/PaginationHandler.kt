@@ -4,6 +4,7 @@ import com.merseyside.pagination.contract.PaginationContract
 
 open class PaginationHandler<Paging : PaginationContract<Data>, Data>(
     paging: Paging,
+    private val saveScrollPosition: Boolean = false,
     loadItemsCountDownOffset: Int = 5,
     loadItemsCountUpOffset: Int = loadItemsCountDownOffset,
 ) : PaginationScrollHandler(loadItemsCountDownOffset, loadItemsCountUpOffset) {
@@ -26,10 +27,11 @@ open class PaginationHandler<Paging : PaginationContract<Data>, Data>(
     }
 
     override fun onLoadPrevPage() {}
-
-    override fun onPositionChanged(position: Int) {
-        pagination.setCurrentPosition(position)
+    override fun onItemAttached(position: Int) {
+        if (saveScrollPosition) pagination.setCurrentPosition(position)
     }
+
+    override fun onItemDetached(position: Int) {}
 
     fun resetPagination() {
         pagination.resetPaging()

@@ -18,27 +18,34 @@ abstract class PaginationScrollHandler(
     var isPaging: Boolean = false
         private set
 
-    private var recyclerView: RecyclerView? = null
+    protected var recyclerView: RecyclerView? = null
+        private set
 
     private val childStateListener: RecyclerView.OnChildAttachStateChangeListener =
         object : RecyclerView.OnChildAttachStateChangeListener {
             override fun onChildViewAttachedToWindow(view: View) {
                 requireRecycler {
                     val position = getChildAdapterPosition(view)
-                    onPositionChanged(position)
+                    onItemAttached(position)
                     loadNextPageIfNeed(position)
                     loadPrevPageIfNeed(position)
                 }
             }
 
-            override fun onChildViewDetachedFromWindow(view: View) {}
+            override fun onChildViewDetachedFromWindow(view: View) {
+                requireRecycler {
+                    val position = getChildAdapterPosition(view)
+                    onItemDetached(position)
+                }
+            }
         }
 
-    abstract fun onLoadCurrentPage()
-    abstract fun onLoadNextPage()
-    abstract fun onLoadPrevPage()
+    protected abstract fun onLoadCurrentPage()
+    protected abstract fun onLoadNextPage()
+    protected abstract fun onLoadPrevPage()
 
-    abstract fun onPositionChanged(position: Int)
+    protected abstract fun onItemAttached(position: Int)
+    protected abstract fun onItemDetached(position: Int)
 
     fun setRecyclerView(recyclerView: RecyclerView?) {
         val prev = this.recyclerView
@@ -61,7 +68,7 @@ abstract class PaginationScrollHandler(
         reset()
     }
 
-    fun <R> ifRecyclerNotNull(block: RecyclerView.() -> R): R? {
+    protected fun <R> ifRecyclerNotNull(block: RecyclerView.() -> R): R? {
         return try {
             requireRecycler(block)
         } catch (_: NullPointerException) {
@@ -70,7 +77,7 @@ abstract class PaginationScrollHandler(
         }
     }
 
-    fun <R> requireRecycler(block: RecyclerView.() -> R): R {
+    protected fun <R> requireRecycler(block: RecyclerView.() -> R): R {
         return recyclerView?.let {
             block(it)
         } ?: throw NullPointerException("Recycler view hasn't set!")
