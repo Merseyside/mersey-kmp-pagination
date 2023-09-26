@@ -94,7 +94,6 @@ abstract class PaginationScrollHandler(
     }
 
     protected fun setMutableState(state: Boolean) {
-        state.log("state")
         if (state) recyclerView?.removeOnChildAttachStateChangeListener(childStateListener)
         else recyclerView?.addOnChildAttachStateChangeListener(childStateListener)
     }

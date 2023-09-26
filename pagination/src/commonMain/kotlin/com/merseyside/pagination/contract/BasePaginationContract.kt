@@ -1,6 +1,8 @@
 package com.merseyside.pagination.contract
 
+import com.merseyside.merseyLib.kotlin.entity.result.Result
 import com.merseyside.merseyLib.kotlin.observable.ObservableField
+import com.merseyside.pagination.state.PagingState
 
 interface BasePaginationContract<Data> {
 
@@ -20,9 +22,11 @@ interface BasePaginationContract<Data> {
      * Calls when pagination starts to load new page
      * Emit true when loading was started, false when loading ends.
      */
-    val onMutableStateChangedEvent: ObservableField<Boolean>
+    val onStateChangedEvent: ObservableField<Result<Data>>
 
     fun loadCurrentPage(onComplete: () -> Unit = {}): Boolean
 
     fun resetPaging()
+
+    fun getPagingState(): PagingState
 }

@@ -1,5 +1,6 @@
 package com.merseyside.pagination
 
+import com.merseyside.merseyLib.kotlin.entity.result.isLoading
 import com.merseyside.pagination.contract.PaginationContract
 
 open class PaginationHandler<Paging : PaginationContract<Data>, Data>(
@@ -13,8 +14,8 @@ open class PaginationHandler<Paging : PaginationContract<Data>, Data>(
 
     init {
         paging.onResetEvent.observe { reset() }
-        paging.onMutableStateChangedEvent.observe(ignoreCurrent = true) { state ->
-            setMutableState(state)
+        paging.onStateChangedEvent.observe(ignoreCurrent = true) { state ->
+            setMutableState(state.isLoading())
         }
     }
 

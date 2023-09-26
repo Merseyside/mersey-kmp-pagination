@@ -7,6 +7,7 @@ import com.merseyside.merseyLib.utils.core.savedState.SavedState
 import com.merseyside.pagination.CompleteAction
 import com.merseyside.pagination.P
 import com.merseyside.pagination.contract.PaginationContract
+import com.merseyside.pagination.state.PagingState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -47,9 +48,9 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
     private val mutPageResultFlow = MutableSharedFlow<Result<Data>>()
     override val onPageResultFlow: Flow<Result<Data>> = mutPageResultFlow
 
-    private val mutOnStateChangedEvent = MutableObservableField(false)
-    override val onMutableStateChangedEvent: ObservableField<Boolean> = mutOnStateChangedEvent
-    private var mutableStateDisposable: Disposable<Boolean>? = null
+    private val mutOnStateChangedEvent = MutableObservableField<Result<Data>>(Result.NotInitialized())
+    override val onStateChangedEvent: ObservableField<Result<Data>> = mutOnStateChangedEvent
+    private var mutableStateDisposable: Disposable<Result<Data>>? = null
 
     override val isFirstPageLoaded: Boolean
         get() = currentPagination.isFirstPageLoaded
@@ -121,7 +122,7 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
     open fun observeMutableState(pagination: Paging) {
         mutableStateDisposable?.dispose()
         mutableStateDisposable =
-            pagination.onMutableStateChangedEvent.observe(ignoreCurrent = true) { state ->
+            pagination.onStateChangedEvent.observe(ignoreCurrent = true) { state ->
                 mutOnStateChangedEvent.value = state
             }
     }
@@ -203,6 +204,10 @@ abstract class ParametrizedPagination<Paging : P<Data>, Data, Params : Any>(
         }
 
         return pagingJob()
+    }
+
+    override fun getPagingState(): PagingState {
+        return PagingState(this)
     }
 
     @ExperimentalContracts
