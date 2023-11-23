@@ -39,12 +39,14 @@ val androidLibraries = listOf(
 val merseyModules = listOf(
     Modules.Android.MerseyLibs.archy,
     Modules.Android.MerseyLibs.utils,
+    Modules.Android.MerseyLibs.adapters,
     Modules.Android.MerseyLibs.adaptersCompose
 )
 
 val merseyLibs = listOf(
     androidLibs.mersey.archy,
     androidLibs.mersey.utils,
+    androidLibs.mersey.adapters,
     androidLibs.mersey.adapters.compose
 )
 

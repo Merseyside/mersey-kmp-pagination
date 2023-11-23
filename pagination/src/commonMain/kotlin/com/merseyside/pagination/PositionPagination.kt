@@ -6,4 +6,4 @@ abstract class PositionPagination<Data>(
     parentScope: CoroutineScope,
     initPage: Int,
     pageSize: Int
-) : Pagination<PositionPagerData<Data>, Data, Int>(parentScope, initPage, pageSize)
+) : TwoWayPagination<PositionPagerData<Data>, Data, Int>(parentScope, initPage, pageSize)

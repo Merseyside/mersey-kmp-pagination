@@ -1,3 +1,5 @@
+@file:Suppress("UNCHECKED_CAST")
+
 package com.merseyside.pagination.adapters.compose
 
 import androidx.recyclerview.widget.RecyclerView
@@ -9,86 +11,38 @@ import com.merseyside.adapters.compose.view.list.simple.ListConfig
 import com.merseyside.adapters.core.base.IBaseAdapter
 import com.merseyside.adapters.core.base.callback.OnAttachToRecyclerViewListener
 import com.merseyside.merseyLib.kotlin.entity.result.Result
+import com.merseyside.merseyLib.kotlin.observable.lifecycle.asLiveData
 import com.merseyside.pagination.PaginationHandler
-import com.merseyside.pagination.TwoWayPaginationHandler
 import com.merseyside.pagination.contract.PaginationContract
-import com.merseyside.pagination.contract.TwoWayPaginationContract
 import com.merseyside.pagination.parametrized.ParametrizedPagination
+import com.merseyside.pagination.parametrized.ext.onResetOrPagingChangedEvent
 
-context(ComposeContext)
-fun <Data> ComposingPagingList(
-    id: String,
-    pagination: TwoWayPaginationContract<Data>,
-    style: ComposingListStyle.() -> Unit = {},
-    pagingConfig: ListConfig.() -> Unit = {},
-    viewProvider: (Result<Data>) -> List<SCV>?
-): ComposingPagingList<Result<Data>> {
-    return ComposingPagingList(id, pagingConfig, style) {
-        onNextPage = pagination.onPageResultFlow
-        onPrevPage = pagination.onPrevPageResultFlow
-        this.viewProvider = viewProvider as (Result<Data>) -> List<SCV>
-        pagination.onResetEvent.observe { resetPaging() }
-
-        if (pagination is ParametrizedPagination<*, *, *>) {
-            pagination.setKeepInstances(false)
-            pagination.onPagingChangedEvent.observe { resetPaging() }
-        }
-    }
-}
-
-context(ComposeContext)
-fun <Data> ComposingPagingList(
-    id: String,
-    pagination: PaginationContract<Data>,
-    style: ComposingListStyle.() -> Unit = {},
-    pagingConfig: ListConfig.() -> Unit = {},
-    viewProvider: (Result<Data>) -> List<SCV>?
-): ComposingPagingList<Result<Data>> {
-    return ComposingPagingList(id, pagingConfig, style) {
-        onNextPage = pagination.onPageResultFlow
-        this.viewProvider = viewProvider as (Result<Data>) -> List<SCV>
-        pagination.onResetEvent.observe { resetPaging() }
-
-        if (pagination is ParametrizedPagination<*, *, *>) {
-            pagination.setKeepInstances(false)
-            pagination.onPagingChangedEvent.observe { resetPaging() }
-        }
-    }
-}
-
-context(ComposeContext)
-fun <Paging : TwoWayPaginationContract<Data>, Data> ComposingPagingList(
-    id: String,
-    paginationHandler: TwoWayPaginationHandler<Paging, Data>,
-    style: ComposingListStyle.() -> Unit = {},
-    pagingConfig: ListConfig.() -> Unit = {},
-    viewProvider: (Result<Data>) -> List<SCV>?
-): ComposingPagingList<Result<Data>> {
-    return ComposingPagingList(
-        id,
-        paginationHandler.pagination,
-        style,
-        wrapWithHandlerConfig(paginationHandler, pagingConfig),
-        viewProvider
-    )
-}
 
 context(ComposeContext)
 fun <Paging : PaginationContract<Data>, Data> ComposingPagingList(
     id: String,
-    paginationHandler: PaginationHandler<Paging, Data>,
+    pagination: Paging,
     style: ComposingListStyle.() -> Unit = {},
     pagingConfig: ListConfig.() -> Unit = {},
     viewProvider: (Result<Data>) -> List<SCV>?
 ): ComposingPagingList<Result<Data>> {
 
-    return ComposingPagingList(
-        id,
-        paginationHandler.pagination,
-        style,
-        wrapWithHandlerConfig(paginationHandler, pagingConfig),
-        viewProvider
-    )
+    val paginationHandler = PaginationHandler(pagination)
+
+    val config = wrapWithHandlerConfig(paginationHandler, pagingConfig)
+
+    return ComposingPagingList(id, config, style) {
+        onNextPage = pagination.onPageResultFlow
+        onPrevPage = pagination.onPrevPageResultFlow
+        this.viewProvider = viewProvider as (Result<Data>) -> List<SCV>
+        pagination.onResetEvent.asLiveData().observe(lifecycleOwner) { resetPaging() }
+
+        if (pagination is ParametrizedPagination<*, *, *>) {
+            pagination.onResetOrPagingChangedEvent().asLiveData().observe(lifecycleOwner) {
+                resetPaging()
+            }
+        }
+    }
 }
 
 context(ComposeContext)

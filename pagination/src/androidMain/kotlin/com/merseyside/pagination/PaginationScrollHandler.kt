@@ -1,10 +1,13 @@
 package com.merseyside.pagination
 
 import android.view.View
+import androidx.core.view.doOnAttach
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.findViewTreeLifecycleOwner
 import androidx.recyclerview.widget.RecyclerView
 import com.merseyside.merseyLib.kotlin.logger.Logger
 import com.merseyside.merseyLib.kotlin.logger.log
-import com.merseyside.merseyLib.kotlin.utils.ifFalse
 import com.merseyside.merseyLib.kotlin.utils.ifTrue
 import com.merseyside.merseyLib.kotlin.utils.safeLet
 import com.merseyside.utils.layoutManager.findFirstVisibleItemPosition
@@ -15,69 +18,140 @@ abstract class PaginationScrollHandler(
     private val loadItemsCountPrevOffset: Int
 ) {
 
+    private var noNextPage: Boolean = false
+    private var noPrevPage: Boolean = false
+
+    private var lifecycleOwner: LifecycleOwner? = null
+
     var isPaging: Boolean = false
         private set
+
+    private var isStartingPageLoading: Boolean = false
+
+    private var isPrevPageLoading = false
+    private var isNextPageLoading = false
+
+    private var isSetScrollPositionEnabled: Boolean = true
+    private var scrollToPositionHelper: ScrollToPositionHelper? = null
 
     protected var recyclerView: RecyclerView? = null
         private set
 
+    private val lifecycleObserver = object : DefaultLifecycleObserver {
+        override fun onDestroy(owner: LifecycleOwner) {
+            super.onDestroy(owner)
+            detachRecyclerView()
+        }
+    }
+
     private val childStateListener: RecyclerView.OnChildAttachStateChangeListener =
         object : RecyclerView.OnChildAttachStateChangeListener {
             override fun onChildViewAttachedToWindow(view: View) {
-                requireRecycler {
-                    val position = getChildAdapterPosition(view)
-                    onItemAttached(position)
-                    loadNextPageIfNeed(position)
-                    loadPrevPageIfNeed(position)
+                if (!isStartingPageLoading) {
+                    requireRecycler {
+                        val position = lazy { getChildAdapterPosition(view) }
+                        onItemAttached(position)
+                        if (!noNextPage) loadNextPageIfNeed(position)
+                        if (!noPrevPage) loadPrevPageIfNeed(position)
+                    }
                 }
             }
 
             override fun onChildViewDetachedFromWindow(view: View) {
                 requireRecycler {
-                    val position = getChildAdapterPosition(view)
+                    val position = lazy { getChildAdapterPosition(view) }
                     onItemDetached(position)
                 }
             }
         }
 
-    protected abstract fun onLoadCurrentPage()
-    protected abstract fun onLoadNextPage()
-    protected abstract fun onLoadPrevPage()
+    protected abstract fun onLoadCurrentPage(onComplete: CompleteAction)
+    protected abstract fun onLoadNextPage(onComplete: CompleteAction): Boolean
+    protected abstract fun onLoadPrevPage(onComplete: CompleteAction): Boolean
+    protected abstract fun isEmptyState(): Boolean
 
-    protected abstract fun onItemAttached(position: Int)
-    protected abstract fun onItemDetached(position: Int)
+    protected open fun onItemAttached(position: Lazy<Int>) {}
+    protected open fun onItemDetached(position: Lazy<Int>) {}
 
     fun setRecyclerView(recyclerView: RecyclerView?) {
-        val prev = this.recyclerView
-        this.recyclerView = recyclerView
-        if (prev == null && isPaging) {
-            startPaging()
-        } else if (prev != null) {
-            reset()
+        if (this.recyclerView == recyclerView) return
+        detachRecyclerView()
+
+        if (recyclerView != null) {
+            attachRecyclerView(recyclerView)
         }
     }
 
-    fun startPaging() {
-        isPaging = true
-        ifRecyclerNotNull {
-            onLoadCurrentPage()
+    fun enableSetScrollPosition(enabled: Boolean) {
+        isSetScrollPositionEnabled = enabled
+    }
+
+    protected abstract fun onRecyclerAttached(
+        recyclerView: RecyclerView,
+        lifecycleOwner: LifecycleOwner
+    )
+
+    protected abstract fun onRecyclerDetached(
+        recyclerView: RecyclerView,
+        lifecycleOwner: LifecycleOwner
+    )
+
+    private fun attachRecyclerView(recyclerView: RecyclerView) {
+        this.recyclerView = recyclerView
+
+        if (isSetScrollPositionEnabled) {
+            scrollToPositionHelper = ScrollToPositionHelper(recyclerView)
         }
+
+        recyclerView.doOnAttach {
+            lifecycleOwner = recyclerView.findViewTreeLifecycleOwner()
+            requireLifecycleOwner().lifecycle.addObserver(lifecycleObserver)
+            onRecyclerAttached(recyclerView, requireLifecycleOwner())
+        }
+    }
+
+    private fun detachRecyclerView() {
+        if (this.recyclerView != null) {
+            scrollToPositionHelper = null
+
+            onRecyclerDetached(requireNotNull(this.recyclerView), requireLifecycleOwner())
+            requireLifecycleOwner().lifecycle.removeObserver(lifecycleObserver)
+            lifecycleOwner = null
+            this.recyclerView = null
+        }
+    }
+
+    protected fun startPaging(startingPosition: Int = 0) {
+        if (!isPaging) {
+            isPaging = true
+            requireRecycler {
+                scrollToPositionHelper?.setPosition(startingPosition)
+                if (isEmptyState()) mutableState { onComplete ->
+                    onLoadCurrentPage(onComplete)
+                } else {
+                    enableObservingAttachedViews()
+                }
+            }
+        } else Logger.logInfo("Already in active state")
     }
 
     fun stopPaging() {
         reset()
     }
 
-    protected fun <R> ifRecyclerNotNull(block: RecyclerView.() -> R): R? {
-        return try {
-            requireRecycler(block)
-        } catch (_: NullPointerException) {
-            Logger.logErr("Can not start paging because recycler didn't set!")
-            null
+    fun getFirstVisibleItemPosition(): Int {
+        return requireRecycler {
+            requireNotNull(layoutManager).findFirstVisibleItemPosition()
         }
     }
 
-    protected fun <R> requireRecycler(block: RecyclerView.() -> R): R {
+    fun getLastVisibleItemPosition(): Int {
+        return requireRecycler {
+            requireNotNull(layoutManager).findLastVisibleItemPosition()
+        }
+    }
+
+    protected inline fun <R> requireRecycler(block: RecyclerView.() -> R): R {
         return recyclerView?.let {
             block(it)
         } ?: throw NullPointerException("Recycler view hasn't set!")
@@ -88,24 +162,26 @@ abstract class PaginationScrollHandler(
      * Also removes child state listener.
      * @see startPaging have to be called again.
      */
-    protected fun reset() {
+    protected open fun reset() {
         isPaging = false
+        noNextPage = false
+        noPrevPage = false
+        isNextPageLoading = false
+        isPrevPageLoading = false
         recyclerView?.removeOnChildAttachStateChangeListener(childStateListener)
     }
 
-    protected fun setMutableState(state: Boolean) {
-        if (state) recyclerView?.removeOnChildAttachStateChangeListener(childStateListener)
-        else recyclerView?.addOnChildAttachStateChangeListener(childStateListener)
-    }
-
-    private fun RecyclerView.loadMoreIfNeeds(complete: () -> Unit) {
-        layoutManager?.let { manager ->
-            loadNextPageIfNeed(manager.findLastVisibleItemPosition()).ifFalse(complete)
-            loadPrevPageIfNeed(manager.findFirstVisibleItemPosition()).ifFalse(complete)
+    private inline fun mutableState(mutate: (onComplete: CompleteAction) -> Unit) {
+        isStartingPageLoading = true
+        disableObservingAttachedViews()
+        mutate {
+            enableObservingAttachedViews()
+            isStartingPageLoading = false
         }
     }
 
     private fun needToLoadNextPage(lastPosition: Int): Boolean = requireRecycler {
+        if (lastPosition == -1) return false
         val itemCount = adapter?.itemCount
         safeLet(itemCount) { counts ->
             (counts - lastPosition) <= loadItemsCountNextOffset
@@ -113,18 +189,36 @@ abstract class PaginationScrollHandler(
     }
 
     private fun needToLoadPrevPage(firstPosition: Int): Boolean {
-        return firstPosition == loadItemsCountPrevOffset
+        return firstPosition != -1 && firstPosition <= loadItemsCountPrevOffset
     }
 
-    private fun loadNextPageIfNeed(position: Int): Boolean {
-        return needToLoadNextPage(position).ifTrue {
-            onLoadNextPage()
+    private fun loadNextPageIfNeed(position: Lazy<Int>) {
+        if (isNextPageLoading) return
+        needToLoadNextPage(position.value).ifTrue {
+            isNextPageLoading = true
+            noNextPage = !onLoadNextPage {
+                isNextPageLoading = false
+            }
         }
     }
 
-    private fun loadPrevPageIfNeed(position: Int): Boolean {
-        return needToLoadPrevPage(position).ifTrue {
-            onLoadPrevPage()
+    private fun loadPrevPageIfNeed(position: Lazy<Int>) {
+        if (isPrevPageLoading) return
+        needToLoadPrevPage(position.value).ifTrue {
+            isPrevPageLoading = true
+            noPrevPage = !onLoadPrevPage {
+                isPrevPageLoading = false
+            }
         }
     }
+
+    private fun enableObservingAttachedViews() {
+        recyclerView?.addOnChildAttachStateChangeListener(childStateListener)
+    }
+
+    private fun disableObservingAttachedViews() {
+        recyclerView?.removeOnChildAttachStateChangeListener(childStateListener)
+    }
+
+    private fun requireLifecycleOwner() = requireNotNull(lifecycleOwner)
 }

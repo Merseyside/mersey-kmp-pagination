@@ -3,6 +3,10 @@ allprojects {
         group = "io.github.merseyside"
         version = multiplatformLibs.versions.mersey.pagination.get()
     }
+
+    task("testClasses").doLast {
+        println("This is a dummy testClasses task")
+    }
 }
 
 subprojects {
@@ -18,5 +22,5 @@ subprojects {
 
 tasks.register("clean", Delete::class).configure {
     group = "build"
-    delete(rootProject.buildDir)
+    delete(rootProject.layout.buildDirectory)
 }

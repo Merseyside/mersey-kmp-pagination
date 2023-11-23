@@ -3,95 +3,141 @@ package com.merseyside.pagination
 import com.merseyside.merseyLib.kotlin.entity.result.Result
 import com.merseyside.merseyLib.kotlin.logger.ILogger
 import com.merseyside.merseyLib.kotlin.logger.Logger
-import com.merseyside.merseyLib.kotlin.observable.EventObservableField
-import com.merseyside.merseyLib.kotlin.observable.MutableObservableField
-import com.merseyside.merseyLib.kotlin.observable.ObservableField
-import com.merseyside.merseyLib.kotlin.observable.SingleObservableEvent
+import com.merseyside.merseyLib.kotlin.observable.*
 import com.merseyside.merseyLib.utils.core.savedState.SavedState
 import com.merseyside.merseyLib.utils.core.savedState.delegate.saveable
+import com.merseyside.pagination.annotation.InternalPaginationApi
 import com.merseyside.pagination.contract.BasePaginationContract
 import com.merseyside.pagination.data.PagerData
 import com.merseyside.pagination.formatter.DataFormatter
 import com.merseyside.pagination.pagesManager.PaginationPagesManager
 import com.merseyside.pagination.state.PagingState
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.*
 
+@OptIn(InternalPaginationApi::class)
 abstract class BasePagination<PD, Data, Page>(
-    parentScope: CoroutineScope,
+    private val parentScope: CoroutineScope,
     initPage: Page,
-    override val pageSize: Int,
-    private val savedState: SavedState = SavedState()
-) : BasePaginationContract<Data>, CoroutineScope, ILogger where PD : PagerData<Data, Page> {
+    pageSize: Int,
+    protected val savedState: SavedState
+) : BasePaginationContract<Data>, ILogger where PD : PagerData<Data, Page> {
+
+    @Suppress("CanBePrimaryConstructorProperty")
+    final override val pageSize: Int = pageSize
+
+    private var savingStateBehaviour = Behaviour.RESET_ON_CHANGE
 
     protected val pagesManager: PaginationPagesManager<Page> by savedState.saveable { savedState ->
         PaginationPagesManager(initPage, pageSize, savedState)
     }
 
-    override val coroutineContext: CoroutineContext = parentScope.coroutineContext
-    private var loadingJob: Job? = null
-
     private val onPagingResetObservableEvent = SingleObservableEvent()
-    override val onResetEvent: EventObservableField = onPagingResetObservableEvent
+    final override val onResetEvent: EventObservableField = onPagingResetObservableEvent
 
     private val mutOnStateChangedEvent by lazy {
-        val initialValue = if (pagesManager.isFirstPageLoaded) Result.Success<Data>()
+        val initialValue = if (pagesManager.isInitialPageLoaded) Result.Success<Data>()
         else Result.NotInitialized()
-        MutableObservableField(initialValue)
+        SingleObservableField(initialValue)
     }
-    override val onStateChangedEvent: ObservableField<Result<Data>> = mutOnStateChangedEvent
+    final override val onStateChangedEvent: ObservableField<Result<Data>> = mutOnStateChangedEvent
+    private val dataFormatters: MutableList<DataFormatter<Data>> = mutableListOf()
 
-    internal val dataFormatters: MutableList<DataFormatter<Data>> = mutableListOf()
+    private var currentPageLoadingJob: Job? = null
+    abstract val onPageResult: Emitter<Data>
 
-    /**
-     * Callback for current and next pages.
-     */
-    protected abstract val onPageResult: suspend (Result<Data>) -> Unit
+    override val isInitialPageLoaded: Boolean
+        get() = pagesManager.isInitialPageLoaded
 
-    override val isFirstPageLoaded: Boolean
-        get() = pagesManager.isFirstPageLoaded
+
+    private var onReady: (startingPosition: Int) -> Unit = {}
+
+    init {
+        onStateChangedEvent.observe { state ->
+            when (state) {
+                is Result.NotInitialized -> savedState.setOnPreSaveStateCallback(null)
+                else -> savedState.setOnPreSaveStateCallback { onPreSaveState(pagesManager) }
+            }
+        }
+    }
+
+    override fun notifyWhenReady(onReady: (startingPosition: Int) -> Unit) {
+        this.onReady = onReady
+        onReady(getSavedPosition())
+    }
+
+    override fun removeNotifyWhenReady() {
+        onReady = {}
+    }
+
+    override fun setSavingStateBehaviour(behaviour: Behaviour) {
+        savingStateBehaviour = behaviour
+    }
+
+    fun getSavedPosition(): Int {
+        return pagesManager.savedStartingPosition
+    }
 
     abstract suspend fun loadPage(page: Page?, pageSize: Int): PD
 
+    abstract fun isDataEmpty(data: Data): Boolean
+
+    /**
+     * Loads starting page
+     */
     override fun loadCurrentPage(onComplete: CompleteAction): Boolean {
-        if (isLoading()) {
-            onComplete()
-            Logger.logInfo(tag, "Loading. Skipped.")
-            return false
+        Logger.log("Trying to load current page")
+        check(!pagesManager.isInitialPageLoaded) {
+            "Starting page has been already loaded!"
         }
-        val page = pagesManager.currentPage
 
-        loadPageInternal(page, onPageResult, onComplete, ::loadPage)
+        isLoading {
+            throw IllegalStateException(
+                "Asked for loading current page" +
+                        " but has been already loading!"
+            )
+        }
 
-        return true
+        val job = loadPage(
+            ::loadPage,
+            pagesManager.startingPage,
+            canPageBeNull = true,
+            emitter = onPageResult,
+            onComplete
+        ) { "No current page!" }
+
+        return if (job != null) {
+            currentPageLoadingJob = job
+            true
+        } else false
     }
 
-    override fun resetPaging() {
-        pagesManager.reset()
-        notifyPagingReset()
-    }
-
-    override fun setCurrentPosition(position: Int) {
-        pagesManager.setCurrentPosition(position)
-    }
-
-    fun isLoadedData(): Boolean {
-        return pagesManager.isFirstPageLoaded
-    }
-
-    fun isLoading(): Boolean {
-        return loadingJob?.isActive == true
-    }
-
-    protected fun loadPageInternal(
+    internal inline fun loadPage(
+        crossinline loadPage: suspend (page: Page?, pageSize: Int) -> PD,
         page: Page?,
-        emitResult: suspend (Result<Data>) -> Unit,
-        onComplete: CompleteAction = {},
-        dataProvider: suspend (page: Page?, pageSize: Int) -> PD
-    ) {
-        loadingJob = launch {
+        canPageBeNull: Boolean = false,
+        crossinline emitter: Emitter<Data>,
+        crossinline onComplete: CompleteAction,
+        onNoPage: () -> String
+    ): Job? {
+        return if (canPageBeNull || page != null) {
+            loadPageInternal(page, emitter, onComplete, loadPage)
+        } else {
+            Logger.logInfo(tag, onNoPage())
+            null
+        }
+    }
+
+    private inline fun loadPageInternal(
+        page: Page?,
+        crossinline emitResult: Emitter<Data>,
+        crossinline onComplete: CompleteAction = {},
+        crossinline dataProvider: suspend (page: Page?, pageSize: Int) -> PD
+    ): Job {
+        check(parentScope.coroutineContext.isActive) {
+            "Cancelled coroutine context!"
+        }
+
+        return parentScope.launch {
             mutateState(emitResult) { emit ->
                 try {
                     emit(Result.Loading())
@@ -99,19 +145,46 @@ abstract class BasePagination<PD, Data, Page>(
                     onDataLoaded(page, newData)
                     emit(Result.Success(formatData(newData.data)))
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Logger.logErr(e)
                     emit(Result.Error(e))
                 }
             }
         }.also { it.invokeOnCompletion { onComplete() } }
     }
 
-    protected fun onDataLoaded(loadedPage: Page?, pagerData: PD) {
-        pagesManager.onPageLoaded(loadedPage, pagerData.nextPage, pagerData.prevPage)
+    override fun resetPaging() {
+        resetPaging(isSoft = false)
+    }
+
+    private fun resetPaging(isSoft: Boolean) {
+        if (isSoft) pagesManager.softReset()
+        else pagesManager.reset()
+        mutOnStateChangedEvent.value = Result.NotInitialized()
+        onReset()
+        notifyPagingReset()
+        onReady(getSavedPosition())
+    }
+
+    protected open fun onReset() {}
+
+    override fun setOnSavePagingPositionCallback(callback: PaginationPagesManager.OnSavePagingPositionCallback?) {
+        pagesManager.setOnSavePagingPositionCallback(callback)
+    }
+
+    fun isLoadedData(): Boolean {
+        return pagesManager.isInitialPageLoaded
+    }
+
+    private fun onDataLoaded(loadedPage: Page?, pagerData: PD) {
+        pagesManager.onPageLoaded(
+            loadedPage,
+            isDataEmpty(pagerData.data),
+            pagerData.nextPage,
+            pagerData.prevPage
+        )
     }
 
     private fun notifyPagingReset() {
-        mutOnStateChangedEvent.value = Result.NotInitialized()
         onPagingResetObservableEvent.call()
     }
 
@@ -134,14 +207,40 @@ abstract class BasePagination<PD, Data, Page>(
         return formattedData
     }
 
-    private suspend fun mutateState(
-        resultObserver: suspend (Result<Data>) -> Unit = {},
-        mutate: suspend (Emitter<Data>) -> Unit
+    internal fun saveState() {
+        savedState.preSave()
+        when (savingStateBehaviour) {
+            Behaviour.RESET_ON_CHANGE -> resetPaging(isSoft = true)
+            Behaviour.KEEP_STATE -> {
+                /* do nothing */
+            }
+        }
+    }
+
+    open fun onPreSaveState(pagesManager: PaginationPagesManager<Page>) {}
+
+    private suspend inline fun mutateState(
+        crossinline emitter: Emitter<Data>,
+        mutate: (Emitter<Data>) -> Unit
     ) {
         mutate { result ->
-            resultObserver(result)
+            emitter(result)
             mutOnStateChangedEvent.value = result
         }
+    }
+
+    private inline fun isLoading(ifLoading: () -> Boolean): Boolean {
+        return if (currentPageLoadingJob?.isActive == true) {
+            Logger.logInfo(tag, "Starting page has been loading. Skipped.")
+            ifLoading()
+        } else false
+    }
+
+    override val tag: String
+        get() = this::class.simpleName ?: "UnknownPagination"
+
+    enum class Behaviour {
+        RESET_ON_CHANGE, KEEP_STATE
     }
 }
 

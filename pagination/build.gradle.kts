@@ -3,7 +3,6 @@ plugins {
     with(catalogPlugins.plugins) {
         plugin(android.library)
         plugin(kotlin.multiplatform)
-        plugin(moko.multiplatform)
         id(mersey.android.extension.id())
         id(mersey.kotlin.extension.id())
         plugin(kotlin.serialization)
@@ -23,19 +22,16 @@ android {
 }
 
 kotlin {
-    android {
+    androidTarget {
         publishLibraryVariants("release", "debug")
         publishLibraryVariantsGroupedByFlavor = true
     }
 
-    ios()
+    iosArm64()
+    iosX64()
     iosSimulatorArm64()
 
-    sourceSets {
-        val iosMain by getting
-        val iosSimulatorArm64Main by getting
-        iosSimulatorArm64Main.dependsOn(iosMain)
-    }
+    applyDefaultHierarchyTemplate()
 
 //    cocoapods {
 //
@@ -63,13 +59,15 @@ kotlinExtension {
     )
 }
 
-val mppLibs = listOf(
-    multiplatformLibs.serialization
+val commonLibs = listOf(
+    common.serialization,
+    common.mersey.time
 )
 
 val android = listOf(
+    androidLibs.androidx.core,
     androidLibs.recyclerView,
-    androidLibs.lifecycleLiveDataKtx,
+    androidLibs.lifecycleLiveDataKtx
 )
 
 val merseyLibs = listOf(
@@ -87,7 +85,7 @@ dependencies {
         commonMainApi(common.mersey.kotlin.ext)
     }
     commonMainApi(multiplatformLibs.bundles.moko.mvvm)
-    mppLibs.forEach { commonMainImplementation(it) }
+    commonLibs.forEach { commonMainImplementation(it) }
     merseyMultiplatform.forEach { lib -> commonMainImplementation(lib) }
 
     android.forEach { lib -> implementation(lib) }
@@ -97,6 +95,4 @@ dependencies {
     } else {
         merseyLibs.forEach { lib -> implementation(lib) }
     }
-
-    commonMainImplementation(common.mersey.time)
 }
