@@ -111,10 +111,10 @@ abstract class PaginationScrollHandler(
     }
 
     private fun detachRecyclerView() {
-        if (this.recyclerView != null) {
-            scrollToPositionHelper = null
+        safeLet(recyclerView) { recycler ->
+            onRecyclerDetached(recycler, requireLifecycleOwner())
 
-            onRecyclerDetached(requireNotNull(this.recyclerView), requireLifecycleOwner())
+            scrollToPositionHelper = null
             requireLifecycleOwner().lifecycle.removeObserver(lifecycleObserver)
             lifecycleOwner = null
             this.recyclerView = null
@@ -122,6 +122,7 @@ abstract class PaginationScrollHandler(
     }
 
     protected fun startPaging(startingPosition: Int = 0) {
+        startingPosition.log(prefix = "starting pos =")
         if (!isPaging) {
             isPaging = true
             requireRecycler {

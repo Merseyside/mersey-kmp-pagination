@@ -13,8 +13,6 @@ import com.merseyside.pagination.contract.BasePaginationContract
 import com.merseyside.pagination.pagesManager.PaginationPagesManager
 import com.merseyside.pagination.state.PagingState
 import kotlinx.coroutines.CoroutineScope
-import kotlin.contracts.ExperimentalContracts
-import kotlin.contracts.contract
 
 @OptIn(InternalPaginationApi::class)
 abstract class BaseParametrizedPagination<Paging : BasePagination<*, Data, *>, Data, Params : Any>(
@@ -27,15 +25,12 @@ abstract class BaseParametrizedPagination<Paging : BasePagination<*, Data, *>, D
     override val pageSize: Int
         get() = currentPagination.pageSize
 
-    private var savingStateBehaviour = BasePagination.Behaviour.RESET_ON_CHANGE
+    private var savingStateBehaviour = Behaviour.SOFT_RESET
 
     private val paginationMap: MutableMap<Params, Paging> = mutableMapOf()
 
     private val onPagingResetObservableEvent = SingleObservableEvent()
     override val onResetEvent: EventObservableField = onPagingResetObservableEvent
-
-    private val onClearedObservableEvent = SingleObservableEvent()
-    val onClearedEvent: EventObservableField = onClearedObservableEvent
 
     private val onPagingChangedMutableEvent = SingleObservableField<Params>()
     val onPagingChangedEvent: ObservableField<Params> = onPagingChangedMutableEvent
@@ -44,7 +39,9 @@ abstract class BaseParametrizedPagination<Paging : BasePagination<*, Data, *>, D
     val currentParams: Params
         get() = _currentParams ?: throw NullPointerException("Params not set!")
 
-    lateinit var currentPagination: Paging
+    private var _currentPagination: Paging? = null
+    val currentPagination: Paging
+        get() = _currentPagination ?: throw NullPointerException("Pagination not set!")
 
     private val mutOnStateChangedEvent =
         MutableObservableField<Result<Data>>(Result.NotInitialized())
@@ -91,7 +88,12 @@ abstract class BaseParametrizedPagination<Paging : BasePagination<*, Data, *>, D
         return paginationMap[params]
     }
 
-    override fun setSavingStateBehaviour(behaviour: BasePagination.Behaviour) {
+    internal fun getCurrentOrDefaultParams(): Params? {
+        return if (isInitialized()) currentParams
+        else getDefaultParams()
+    }
+
+    fun setSavingStateBehaviour(behaviour: Behaviour) {
         check(keepInstances) {
             "Pagination instances are not keeping by parametrized pagination." +
                     "Please call setKeepInstances and pass true"
@@ -99,26 +101,26 @@ abstract class BaseParametrizedPagination<Paging : BasePagination<*, Data, *>, D
 
         if (behaviour != savingStateBehaviour) {
             savingStateBehaviour = behaviour
-            paginationMap.forEach { (_, paging) -> paging.setSavingStateBehaviour(behaviour) }
         } else Logger.logInfo(tag, "Setting the same savingStateBehaviour. Skipped.")
     }
 
     fun setParams(params: Params): Boolean {
-        if (isInitialized() && currentParams == params) {
+        if (_currentParams == params) {
             Logger.logInfo(tag, "Trying to set the same params.")
             return false
         } else {
             cancelLoading()
         }
 
-        if (!keepInstances && this::currentPagination.isInitialized) {
-            currentPagination.resetPaging()
+        if (!keepInstances) {
+            _currentPagination?.reset()
+            _currentPagination = null
         }
 
         Logger.logInfo(tag, "Set new params")
         _currentParams = params
-        val prevPaging = if (this::currentPagination.isInitialized) currentPagination else null
-        currentPagination = getPagination(params)
+        val prevPaging = _currentPagination
+        _currentPagination = getPagination(params)
         onPaginationChange(prevPaging, currentPagination)
         onPaginationChanged(params)
 
@@ -127,7 +129,11 @@ abstract class BaseParametrizedPagination<Paging : BasePagination<*, Data, *>, D
 
     private fun getPagination(params: Params): Paging {
         return if (keepInstances) {
-            getPaginationOrNull(params) ?: createPagination(parentScope, params, savedState).also { paging ->
+            getPaginationOrNull(params) ?: createPagination(
+                parentScope,
+                params,
+                savedState
+            ).also { paging ->
                 onPaginationCreated(paging, params)
             }
         } else {
@@ -137,12 +143,15 @@ abstract class BaseParametrizedPagination<Paging : BasePagination<*, Data, *>, D
 
     protected open fun onPaginationCreated(paging: Paging, params: Params) {
         paginationMap[params] = paging
-        paging.setSavingStateBehaviour(savingStateBehaviour)
     }
 
     protected open fun onPaginationChange(prevPaging: Paging?, paging: Paging) {
         safeLet(prevPaging) { prev ->
             prev.saveState()
+            when (savingStateBehaviour) {
+                Behaviour.SOFT_RESET -> prev.softReset()
+                Behaviour.KEEP_STATE -> {} /* do nothing */
+            }
             prev.setOnSavePagingPositionCallback(null)
         }
 
@@ -164,52 +173,40 @@ abstract class BaseParametrizedPagination<Paging : BasePagination<*, Data, *>, D
         onReady(currentPagination.getSavedPosition())
     }
 
-    /**
-     * Return true if new provided params are not equal to current params
-     */
-    @OptIn(ExperimentalContracts::class)
-    fun updateAndSetParams(update: (Params) -> Params): Boolean {
-        val params = if (isInitialized()) currentParams
-        else getDefaultParams()
-
-        check(params != null) {
-            "Nothing to update!"
-        }
-
-        return if (requireParamsNotNull(params)) {
-            val newParams = update(params)
-            setParams(newParams)
-        } else false
-    }
-
     override fun loadCurrentPage(onComplete: CompleteAction): Boolean = setPaginationIfNeed {
         currentPagination.loadCurrentPage(onComplete)
     }
 
     open fun observeMutableState(pagination: Paging) {
-        mutableStateDisposable =
-            pagination.onStateChangedEvent.observe { state ->
-                mutOnStateChangedEvent.value = state
-            }
+        mutableStateDisposable = pagination.onStateChangedEvent.observe { state ->
+            mutOnStateChangedEvent.value = state
+        }
     }
 
-    override fun resetPaging() {
+    override fun softReset() {
+        _currentPagination?.softReset()
+    }
+
+    override fun reset() {
         cancelLoading()
-        currentPagination.resetPaging()
+
+        _currentPagination?.reset()
+        _currentPagination = null
+        _currentParams = null
+
+        paginationMap.forEach { (_, paging) -> paging.reset() }
+        paginationMap.clear()
+
         onPaginationReset()
+    }
+
+    override fun saveState() {
+        currentPagination.saveState()
     }
 
     override fun setOnSavePagingPositionCallback(callback: PaginationPagesManager.OnSavePagingPositionCallback?) {
         onSavePagingPositionCallback = callback
-    }
-
-    fun clear() {
-        _currentParams = null
-        onPagingChangedMutableEvent.value = null
-        resetPaging()
-
-        paginationMap.clear()
-        onClearedObservableEvent.call()
+        _currentPagination?.setOnSavePagingPositionCallback(callback)
     }
 
     /**
@@ -221,7 +218,7 @@ abstract class BaseParametrizedPagination<Paging : BasePagination<*, Data, *>, D
     fun setKeepInstances(keepInstances: Boolean) {
         if (this.keepInstances != keepInstances) {
             if (!keepInstances) {
-                clear()
+                reset()
             }
 
             this.keepInstances = keepInstances
@@ -240,7 +237,6 @@ abstract class BaseParametrizedPagination<Paging : BasePagination<*, Data, *>, D
 
     private fun onPaginationReset() {
         onPagingResetObservableEvent.call()
-        onReady(0)
     }
 
     private fun <R> setPaginationIfNeed(pagingJob: () -> R): R {
@@ -257,14 +253,8 @@ abstract class BaseParametrizedPagination<Paging : BasePagination<*, Data, *>, D
         return PagingState(this)
     }
 
-    @ExperimentalContracts
-    private fun requireParamsNotNull(params: Params?): Boolean {
-        contract {
-            returns(true) implies (params != null)
-        }
-
-        return if (params != null) true
-        else throw NullPointerException("Params not set and default params is also null!")
+    enum class Behaviour {
+        SOFT_RESET, KEEP_STATE
     }
 
     override val tag: String

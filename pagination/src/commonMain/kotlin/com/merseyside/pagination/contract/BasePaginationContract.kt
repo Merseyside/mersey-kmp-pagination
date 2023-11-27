@@ -26,12 +26,12 @@ interface BasePaginationContract<Data> {
      */
     val onStateChangedEvent: ObservableField<Result<Data>>
 
-    fun setSavingStateBehaviour(behaviour: BasePagination.Behaviour)
-
     @InternalPaginationApi
     fun loadCurrentPage(onComplete: CompleteAction = {}): Boolean
 
-    fun resetPaging()
+    fun reset()
+
+    fun softReset()
 
     fun getPagingState(): PagingState
 
@@ -45,4 +45,7 @@ interface BasePaginationContract<Data> {
 
     @InternalPaginationApi
     fun cancelLoading()
+
+    @InternalPaginationApi
+    fun saveState()
 }

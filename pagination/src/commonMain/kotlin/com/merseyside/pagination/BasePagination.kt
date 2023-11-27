@@ -25,8 +25,6 @@ abstract class BasePagination<PD, Data, Page>(
     @Suppress("CanBePrimaryConstructorProperty")
     final override val pageSize: Int = pageSize
 
-    private var savingStateBehaviour = Behaviour.RESET_ON_CHANGE
-
     protected val pagesManager: PaginationPagesManager<Page> by savedState.saveable { savedState ->
         PaginationPagesManager(initPage, pageSize, savedState)
     }
@@ -67,10 +65,6 @@ abstract class BasePagination<PD, Data, Page>(
 
     override fun removeNotifyWhenReady() {
         onReady = {}
-    }
-
-    override fun setSavingStateBehaviour(behaviour: Behaviour) {
-        savingStateBehaviour = behaviour
     }
 
     fun getSavedPosition(): Int {
@@ -152,20 +146,21 @@ abstract class BasePagination<PD, Data, Page>(
         }.also { it.invokeOnCompletion { onComplete() } }
     }
 
-    override fun resetPaging() {
-        resetPaging(isSoft = false)
+    override fun reset() {
+        pagesManager.reset()
+        onReset()
     }
 
-    private fun resetPaging(isSoft: Boolean) {
-        if (isSoft) pagesManager.softReset()
-        else pagesManager.reset()
-        mutOnStateChangedEvent.value = Result.NotInitialized()
+    override fun softReset() {
+        pagesManager.softReset()
         onReset()
+    }
+
+    protected open fun onReset() {
+        mutOnStateChangedEvent.value = Result.NotInitialized()
         notifyPagingReset()
         onReady(getSavedPosition())
     }
-
-    protected open fun onReset() {}
 
     override fun setOnSavePagingPositionCallback(callback: PaginationPagesManager.OnSavePagingPositionCallback?) {
         pagesManager.setOnSavePagingPositionCallback(callback)
@@ -207,14 +202,9 @@ abstract class BasePagination<PD, Data, Page>(
         return formattedData
     }
 
-    internal fun saveState() {
+    override fun saveState() {
         savedState.preSave()
-        when (savingStateBehaviour) {
-            Behaviour.RESET_ON_CHANGE -> resetPaging(isSoft = true)
-            Behaviour.KEEP_STATE -> {
-                /* do nothing */
-            }
-        }
+        savedState.log("saved state =")
     }
 
     open fun onPreSaveState(pagesManager: PaginationPagesManager<Page>) {}
@@ -238,10 +228,6 @@ abstract class BasePagination<PD, Data, Page>(
 
     override val tag: String
         get() = this::class.simpleName ?: "UnknownPagination"
-
-    enum class Behaviour {
-        RESET_ON_CHANGE, KEEP_STATE
-    }
 }
 
 typealias CompleteAction = () -> Unit

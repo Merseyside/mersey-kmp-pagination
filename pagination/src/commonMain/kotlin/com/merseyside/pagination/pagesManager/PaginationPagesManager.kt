@@ -1,6 +1,7 @@
 package com.merseyside.pagination.pagesManager
 
 import com.merseyside.merseyLib.kotlin.logger.Logger
+import com.merseyside.merseyLib.kotlin.logger.log
 import com.merseyside.merseyLib.utils.core.savedState.SavedState
 import com.merseyside.merseyLib.utils.core.savedState.delegate.value
 
@@ -80,7 +81,7 @@ class PaginationPagesManager<Page>(
 
     fun setOnSavePagingPositionCallback(callback: OnSavePagingPositionCallback?) {
         if (callback != null) {
-            savedState.setOnPreSaveStateCallback(::onSaveState)
+            savedState.setOnPreSaveStateCallback { onSaveState() }
         } else {
             savedState.setOnPreSaveStateCallback(null)
         }
@@ -88,7 +89,8 @@ class PaginationPagesManager<Page>(
         onSavePagingPositionCallback = callback
     }
 
-    private fun onSaveState(savedState: SavedState) {
+    private fun onSaveState() {
+        "onSaveState".log()
         if (isInitialPageLoaded) {
             val itemPosition = onSavePagingPositionCallback?.getCurrentPagingItemPosition() ?: 0
             setCurrentPosition(itemPosition)

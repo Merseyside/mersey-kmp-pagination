@@ -3,6 +3,7 @@ package com.merseyside.pagination
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LiveData
 import androidx.recyclerview.widget.RecyclerView
+import com.merseyside.merseyLib.kotlin.logger.log
 import com.merseyside.merseyLib.kotlin.observable.lifecycle.asLiveData
 import com.merseyside.pagination.annotation.InternalPaginationApi
 import com.merseyside.pagination.contract.OneWayPaginationContract
@@ -40,6 +41,7 @@ open class PaginationHandler<Paging : OneWayPaginationContract<Data>, Data>(
 
     override fun onRecyclerDetached(recyclerView: RecyclerView, lifecycleOwner: LifecycleOwner) {
         paging.removeNotifyWhenReady()
+        paging.saveState()
         resetEventLiveData.removeObservers(lifecycleOwner)
     }
 
@@ -69,7 +71,7 @@ open class PaginationHandler<Paging : OneWayPaginationContract<Data>, Data>(
         if (positionSaver != null) {
             pagination.setOnSavePagingPositionCallback {
                 requireRecycler {
-                    val visibleItemPosition = getFirstVisibleItemPosition()
+                    val visibleItemPosition = getFirstVisibleItemPosition().log("kek", "current pos")
                     positionSaver.getPagingItemPosition(this, visibleItemPosition)
                 }
             }
@@ -77,7 +79,7 @@ open class PaginationHandler<Paging : OneWayPaginationContract<Data>, Data>(
     }
 
     fun restartPagination() {
-        pagination.resetPaging()
+        pagination.reset()
     }
 
     fun withPaging(block: Paging.() -> Unit) {
