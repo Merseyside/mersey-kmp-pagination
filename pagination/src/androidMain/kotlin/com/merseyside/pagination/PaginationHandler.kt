@@ -1,29 +1,86 @@
 package com.merseyside.pagination
 
-import com.merseyside.pagination.contract.PaginationContract
-import com.merseyside.utils.pagination.PaginationScrollHandler
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LiveData
+import androidx.recyclerview.widget.RecyclerView
+import com.merseyside.merseyLib.kotlin.logger.log
+import com.merseyside.merseyLib.kotlin.observable.lifecycle.asLiveData
+import com.merseyside.pagination.annotation.InternalPaginationApi
+import com.merseyside.pagination.contract.OneWayPaginationContract
+import com.merseyside.pagination.contract.TwoWayPaginationContract
+import com.merseyside.pagination.parametrized.ParametrizedPagination
+import com.merseyside.pagination.parametrized.ext.onResetOrPagingChangedEvent
+import com.merseyside.pagination.positionSaver.PaginationPositionSaver
 
-open class PaginationHandler<Paging : PaginationContract<Data>, Data>(
-    paging: Paging,
+@OptIn(InternalPaginationApi::class)
+open class PaginationHandler<Paging : OneWayPaginationContract<Data>, Data>(
+    private val paging: Paging,
     loadItemsCountDownOffset: Int = 5,
     loadItemsCountUpOffset: Int = loadItemsCountDownOffset,
 ) : PaginationScrollHandler(loadItemsCountDownOffset, loadItemsCountUpOffset) {
 
     open val pagination: Paging = paging
 
+    private val resetEventLiveData: LiveData<Unit>
+    private var positionSaver: PaginationPositionSaver<*>? = null
+
     init {
-        paging.onResetEvent.observe { reset() }
+        val resetEvent = if (paging is ParametrizedPagination<*, *, *>) {
+            paging.onResetOrPagingChangedEvent()
+        } else paging.onResetEvent
+
+        resetEventLiveData = resetEvent.asLiveData()
     }
 
-    override val onLoadFirstPage: (onComplete: () -> Unit) -> Unit = {
-        pagination.loadInitialPage(it)
+    override fun onRecyclerAttached(recyclerView: RecyclerView, lifecycleOwner: LifecycleOwner) {
+        resetEventLiveData.observe(lifecycleOwner) { reset() }
+        paging.notifyWhenReady { startingPosition ->
+            startPaging(startingPosition)
+        }
     }
 
-    override val onLoadNextPage: (onComplete: () -> Unit) -> Unit = {
-        pagination.loadNextPage(it)
+    override fun onRecyclerDetached(recyclerView: RecyclerView, lifecycleOwner: LifecycleOwner) {
+        paging.removeNotifyWhenReady()
+        paging.saveState()
+        resetEventLiveData.removeObservers(lifecycleOwner)
     }
 
-    override val onLoadPrevPage: (onComplete: () -> Unit) -> Unit = {}
+    override fun onLoadCurrentPage(onComplete: CompleteAction) {
+        pagination.loadCurrentPage(onComplete)
+    }
+
+    override fun onLoadNextPage(onComplete: CompleteAction): Boolean {
+        return pagination.loadNextPage(onComplete)
+    }
+
+    override fun onLoadPrevPage(onComplete: CompleteAction): Boolean {
+        return if (pagination is TwoWayPaginationContract<*>) {
+            (pagination as TwoWayPaginationContract<*>).loadPrevPage(onComplete)
+        } else {
+            onComplete()
+            false
+        }
+    }
+
+    override fun isEmptyState(): Boolean {
+        return !pagination.isInitialPageLoaded
+    }
+
+    fun setPositionSaver(positionSaver: PaginationPositionSaver<*>?) {
+        this.positionSaver = positionSaver
+        if (positionSaver != null) {
+            pagination.setOnSavePagingPositionCallback {
+                requireRecycler {
+                    val visibleItemPosition = getFirstVisibleItemPosition().log("kek", "current pos")
+                    positionSaver.getPagingItemPosition(this, visibleItemPosition)
+                }
+            }
+        }
+    }
+
+    fun restartPagination() {
+        pagination.reset()
+    }
 
     fun withPaging(block: Paging.() -> Unit) {
         block(pagination)

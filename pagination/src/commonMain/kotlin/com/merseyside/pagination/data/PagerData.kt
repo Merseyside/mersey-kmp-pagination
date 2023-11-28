@@ -1,4 +1,4 @@
-package com.merseyside.pagination
+package com.merseyside.pagination.data
 
 open class PagerData<Data, Page>(
     val data: Data,

@@ -1,8 +1,10 @@
 package com.merseyside.pagination.parametrized
 
 import com.merseyside.merseyLib.kotlin.entity.result.Result
-import com.merseyside.pagination.TwoWayPaginationData
-import com.merseyside.pagination.contract.TwoWayPaginationContract
+import com.merseyside.merseyLib.utils.core.savedState.SavedState
+import com.merseyside.pagination.TwoWayPagination
+import com.merseyside.pagination.annotation.InternalPaginationApi
+import com.merseyside.pagination.contract.PaginationContract
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -10,11 +12,14 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 
-abstract class TwoWayParametrizedPagination<Paging : TwoWayPaginationData<Data>, Data, Params : Any>(
+@OptIn(InternalPaginationApi::class)
+abstract class TwoWayParametrizedPagination<Paging : TwoWayPagination<*, Data, *>, Data, Params : Any>(
     parentScope: CoroutineScope,
-    defaultParams: Params? = null,
-    keepInstances: Boolean = false
-) : ParametrizedPagination<Paging, Data, Params>(parentScope, defaultParams, keepInstances), TwoWayPaginationContract<Data> {
+    savedState: SavedState,
+) : OneWayParametrizedPagination<Paging, Data, Params>(
+    parentScope,
+    savedState
+), PaginationContract<Data> {
 
     private var collectPrevJob: Job? = null
 
@@ -28,14 +33,14 @@ abstract class TwoWayParametrizedPagination<Paging : TwoWayPaginationData<Data>,
     override fun collectPagination(pagination: Paging) {
         super.collectPagination(pagination)
 
-        cancelPrevJob()
         collectPrevJob = pagination
             .onPrevPageResultFlow
             .onEach { mutPrevPageResultFlow.emit(it) }
             .launchIn(parentScope)
     }
 
-    private fun cancelPrevJob() {
+    override fun cancelLoading() {
+        super.cancelLoading()
         collectPrevJob?.cancel()
         collectPrevJob = null
     }

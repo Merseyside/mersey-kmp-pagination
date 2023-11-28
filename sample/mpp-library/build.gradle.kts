@@ -3,7 +3,6 @@ plugins {
     with(catalogPlugins.plugins) {
         plugin(android.library)
         plugin(kotlin.multiplatform)
-        plugin(moko.multiplatform)
         plugin(kotlin.serialization)
         id(mersey.kotlin.extension.id())
         id(mersey.android.extension.id())
@@ -21,20 +20,13 @@ android {
 }
 
 kotlin {
-    android {
-        publishLibraryVariants("release", "debug")
-        publishLibraryVariantsGroupedByFlavor = true
-    }
+    androidTarget()
 
-    ios()
-    // Add the ARM64 simulator target
+    iosArm64()
+    iosX64()
     iosSimulatorArm64()
 
-    sourceSets {
-        val iosMain by getting
-        val iosSimulatorArm64Main by getting
-        iosSimulatorArm64Main.dependsOn(iosMain)
-    }
+    applyDefaultHierarchyTemplate()
 
     cocoapods {
         framework {

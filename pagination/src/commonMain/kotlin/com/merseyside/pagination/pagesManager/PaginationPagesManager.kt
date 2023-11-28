@@ -1,44 +1,119 @@
 package com.merseyside.pagination.pagesManager
 
+import com.merseyside.merseyLib.kotlin.logger.Logger
+import com.merseyside.merseyLib.kotlin.logger.log
 import com.merseyside.merseyLib.utils.core.savedState.SavedState
 import com.merseyside.merseyLib.utils.core.savedState.delegate.value
-import com.merseyside.merseyLib.utils.core.savedState.delegate.valueOrNull
 
 class PaginationPagesManager<Page>(
-    private val initPage: Page,
+    private val initPage: Page?,
+    private val pageSize: Int,
     private val savedState: SavedState
 ) {
 
-    var isFirstPageLoaded = false
+    private val loadedPageList: MutableList<Page?> = mutableListOf()
 
-    var currentPage: Page? by savedState.value(initPage)
+    var isInitialPageLoaded = false
+        private set
 
-    private var _prevPage: Page? by savedState.valueOrNull()
-    private var _nextPage: Page? by savedState.valueOrNull()
+    var startingPage: Page? by savedState.value(defValue = initPage)
+    var savedStartingPosition: Int by savedState.value(defValue = 0)
 
-    fun getPrevPage(): Page? {
-        if (!isFirstPageLoaded) throw IllegalStateException("First page not loaded!")
-        return _prevPage
-    }
+    private var _nextPage: Page? = null
+    private var _prevPage: Page? = null
+
+    private var onSavePagingPositionCallback: OnSavePagingPositionCallback? = null
 
     fun getNextPage(): Page? {
-        if (!isFirstPageLoaded) throw IllegalStateException("First page not loaded!")
+        requireInitialPageLoaded()
         return _nextPage
     }
 
-    fun onPageLoaded(loadedPage: Page?, nextPage: Page?, prevPage: Page? = null) {
-        currentPage = loadedPage
+    fun getPrevPage(): Page? {
+        requireInitialPageLoaded()
+        return _prevPage
+    }
 
-        _prevPage = prevPage
+    fun onPageLoaded(
+        loadedPage: Page?,
+        isEmptyData: Boolean,
+        nextPage: Page?,
+        prevPage: Page? = null
+    ) {
+        if (!isInitialPageLoaded) {
+            isInitialPageLoaded = true
+            if (startingPage != null) _prevPage = prevPage
+            _nextPage = nextPage
+            loadedPageList.add(loadedPage)
+
+        } else if (loadedPage == _nextPage) {
+            onNextPageLoaded(loadedPage, isEmptyData, nextPage)
+        } else {
+            onPrevPageLoaded(loadedPage, isEmptyData, prevPage)
+        }
+    }
+
+    private fun onNextPageLoaded(loadedPage: Page?, isEmptyData: Boolean, nextPage: Page?) {
         _nextPage = nextPage
+        if (!isEmptyData) loadedPageList.add(loadedPage)
+    }
+
+    private fun onPrevPageLoaded(loadedPage: Page?, isEmptyData: Boolean, prevPage: Page?) {
+        _prevPage = prevPage
+        if (!isEmptyData) loadedPageList.add(0, loadedPage)
+    }
+
+    fun softReset() {
+        isInitialPageLoaded = false
+        savedStartingPosition %= pageSize
+        loadedPageList.clear()
+        _prevPage = null
+        _nextPage = null
+        setOnSavePagingPositionCallback(null)
     }
 
     fun reset() {
+        startingPage = initPage
+        savedStartingPosition = 0
         savedState.clear()
+        softReset()
+    }
 
-        isFirstPageLoaded = false
-        currentPage = initPage
-        _prevPage = null
-        _nextPage = null
+    fun setOnSavePagingPositionCallback(callback: OnSavePagingPositionCallback?) {
+        if (callback != null) {
+            savedState.setOnPreSaveStateCallback { onSaveState() }
+        } else {
+            savedState.setOnPreSaveStateCallback(null)
+        }
+
+        onSavePagingPositionCallback = callback
+    }
+
+    private fun onSaveState() {
+        "onSaveState".log()
+        if (isInitialPageLoaded) {
+            val itemPosition = onSavePagingPositionCallback?.getCurrentPagingItemPosition() ?: 0
+            setCurrentPosition(itemPosition)
+        }
+    }
+
+    private fun setCurrentPosition(position: Int) {
+        if (position <= loadedPageList.size * pageSize) {
+            val pageIndex = position / pageSize
+            savedStartingPosition = position
+            startingPage = loadedPageList[pageIndex]
+        } else {
+            Logger.logInfo("Invalid position. Skipped.")
+        }
+    }
+
+    private fun requireInitialPageLoaded() {
+        check(isInitialPageLoaded) {
+            "Initial page not loaded!"
+        }
+    }
+
+    fun interface OnSavePagingPositionCallback {
+        fun getCurrentPagingItemPosition(): Int
     }
 }
